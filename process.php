@@ -1,155 +1,218 @@
 <?php
-set_time_limit(300);
-
-$uploadDir = __DIR__ . '/uploads/';
-if (!is_dir($uploadDir)) mkdir($uploadDir);
-
-$action = $_POST['action'] ?? null;
-
-// Security: Define a restricted root for saving files to prevent access to system folders
-/** 
- * CORPORATE SAFETY NOTICE:
- * To save anywhere on your computer (e.g., your Desktop), change the line below to:
- * $allowedRoot = 'C:\\'; 
- * 
- * For maximum security, keep it restricted to the 'output' folder.
- */
-$allowedRoot = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers\\MERGE';
-if (!is_dir($allowedRoot)) mkdir($allowedRoot);
 
 /**
- * Validates that the path is within the allowed folder
+ * process.php
+ *
+ * PURPOSE:
+ * - Save final PDF blobs generated in the browser
+ * - Validate save paths against an allowed root
+ * - Test if a path exists / is writable
+ * - Open destination folder (Windows only)
+ *
+ * IMPORTANT:
+ * - NO PDF merging / editing here
+ * - NO Ghostscript
+ * - NO exec() PDF tools
  */
-function validatePath($path, $root)
+
+set_time_limit(300);
+
+/* ==========================================================
+   CONFIGURATION
+   ========================================================== */
+
+/**
+ * Allowed root directory for saving files
+ * (SECURITY CRITICAL)
+ */
+$ALLOWED_ROOT = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers\\MERGE';
+
+/* ==========================================================
+   HELPER FUNCTIONS
+   ========================================================== */
+
+/**
+ * Validate that a path is inside the allowed root directory
+ */
+function validatePath(string $path, string $root): bool
 {
-    $realRoot = realpath($root);
-    if (!$realRoot) return false;
-
-    // Ensure root ends with a separator for precise folder matching
-    $realRoot = rtrim($realRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-
-    // Normalize separators and remove trailing slashes for consistent comparison
-    $path = rtrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path), DIRECTORY_SEPARATOR);
-
-    // Get realpath of the path (or its closest existing parent if the folder doesn't exist yet)
-    $checkPath = $path;
-    while ($checkPath && !file_exists($checkPath)) {
-        $checkPath = dirname($checkPath);
+    $rootReal = realpath($root);
+    if ($rootReal === false) {
+        return false;
     }
-    $absolutePath = realpath($checkPath);
 
-    if (!$absolutePath) return false;
+    // Normalize root
+    $rootReal = rtrim($rootReal, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
 
-    // Add separator to check path to prevent partial matches (e.g., 'output' vs 'output_secret')
-    $absolutePath = rtrim($absolutePath, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    // Normalize target path
+    $path = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
+    $path = rtrim($path, DIRECTORY_SEPARATOR);
 
-    // On Windows, paths are case-insensitive. We use strtolower for comparison.
-    return (strpos(strtolower($absolutePath), strtolower($realRoot)) === 0);
+    // Resolve closest existing parent
+    $check = $path;
+    while ($check && !file_exists($check)) {
+        $check = dirname($check);
+    }
+
+    $pathReal = realpath($check);
+    if ($pathReal === false) {
+        return false;
+    }
+
+    $pathReal = rtrim($pathReal, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+
+    // Windows is case‑insensitive
+    return stripos($pathReal, $rootReal) === 0;
 }
 
-if ($action === 'test_path') {
-    $targetPath = $_POST['targetPath'] ?? '';
-    if (empty($targetPath)) exit('Path is empty');
+/**
+ * Unified response helper
+ */
+function respond(string $message, int $status = 200): void
+{
+    http_response_code($status);
+    echo $message;
+    exit;
+}
 
-    if (!validatePath($targetPath, $allowedRoot)) {
-        $resolvedRoot = realpath($allowedRoot);
-        exit("Error: Security Violation.\n" .
-            "Requested: $targetPath\n" .
-            "Allowed Root: $resolvedRoot\n" .
-            "The requested path is outside the permitted directory.");
+/* ==========================================================
+   ROUTER
+   ========================================================== */
+
+$action = $_POST['action'] ?? '';
+
+/* ==========================================================
+   BROWSE FOLDER (WINDOWS ONLY)
+   ========================================================== */
+if ($action === 'browse_folder') {
+    $startPath = trim($_POST['targetPath'] ?? $ALLOWED_ROOT);
+
+    // Default to allowed root if provided path is invalid
+    if (!is_dir($startPath) || !validatePath($startPath, $ALLOWED_ROOT)) {
+        $startPath = $ALLOWED_ROOT;
     }
 
-    if (is_dir($targetPath)) {
-        if (is_writable($targetPath)) {
-            exit('Success: Folder is found and writable.');
+    // Use PowerShell to open a native Windows folder picker
+    $psCommand = "Add-Type -AssemblyName System.Windows.Forms; " .
+        "\$f = New-Object System.Windows.Forms.FolderBrowserDialog; " .
+        "\$f.SelectedPath = '$startPath'; " .
+        "\$f.Description = 'Select PDF Output Folder'; " .
+        "if(\$f.ShowDialog() -eq 'OK') { Write-Host \$f.SelectedPath }";
+
+    $fullCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$psCommand\"";
+    $result = shell_exec($fullCmd);
+
+    if ($result) {
+        $selectedPath = trim($result);
+        // Security check: Ensure the user didn't browse outside the allowed root
+        if (validatePath($selectedPath, $ALLOWED_ROOT)) {
+            echo $selectedPath;
+        } else {
+            respond("Security violation: Selected path is outside the allowed directory.", 403);
         }
-        exit('Error: Folder exists but is not writable.');
     } else {
-        if (mkdir($targetPath, 0777, true)) {
-            exit('Success: Folder was created.');
-        }
-        exit('Error: Path does not exist and could not be created.');
-    }
-}
-
-if ($action === 'open_folder') {
-    $targetPath = $_POST['targetPath'] ?? '';
-    if (is_dir($targetPath) && validatePath($targetPath, $allowedRoot)) {
-        shell_exec('explorer ' . escapeshellarg(realpath($targetPath)));
+        // No output usually means the user cancelled
     }
     exit;
 }
 
+/* ==========================================================
+   TEST PATH
+   ========================================================== */
+if ($action === 'test_path') {
+
+    $targetPath = trim($_POST['targetPath'] ?? '');
+
+    if ($targetPath === '') {
+        respond('Path is empty.', 400);
+    }
+
+    if (!validatePath($targetPath, $ALLOWED_ROOT)) {
+        respond(
+            "Security violation.\nRequested path is outside the allowed directory.",
+            403
+        );
+    }
+
+    if (!file_exists($targetPath)) {
+        if (!@mkdir($targetPath, 0777, true)) {
+            respond('Failed to create directory.', 500);
+        }
+        respond('Success: Folder created and writable.');
+    }
+
+    if (!is_dir($targetPath)) {
+        respond('Path exists but is not a directory.', 400);
+    }
+
+    if (!is_writable($targetPath)) {
+        respond('Folder exists but is NOT writable.', 403);
+    }
+
+    respond('Success: Folder exists and is writable.');
+}
+
+/* ==========================================================
+   SAVE PDF TO PATH
+   ========================================================== */
 if ($action === 'save_to_path') {
-    $targetPath = $_POST['targetPath'] ?? '';
-    $pdf = $_FILES['pdf'] ?? null;
 
-    if (!$pdf || !$targetPath) {
-        http_response_code(400);
-        exit('Missing file or path');
+    $targetPath = trim($_POST['targetPath'] ?? '');
+    $file = $_FILES['pdf'] ?? null;
+
+    if ($targetPath === '' || !$file) {
+        respond('Missing file or path.', 400);
     }
 
-    if (!validatePath($targetPath, $allowedRoot)) {
-        http_response_code(403);
-        exit('Security Violation: Invalid save path.');
+    if (!validatePath($targetPath, $ALLOWED_ROOT)) {
+        respond('Security violation: invalid save path.', 403);
     }
 
-    // Ensure path ends with a slash
+    if (!is_uploaded_file($file['tmp_name'])) {
+        respond('Invalid file upload.', 400);
+    }
+
+    // Normalize path
     $targetPath = rtrim($targetPath, '/\\') . DIRECTORY_SEPARATOR;
 
     if (!is_dir($targetPath)) {
-        mkdir($targetPath, 0777, true);
+        if (!@mkdir($targetPath, 0777, true)) {
+            respond('Failed to create destination folder.', 500);
+        }
     }
 
-    $fullPath = $targetPath . $pdf['name'];
+    $safeName = basename($file['name']);
+    $destination = $targetPath . $safeName;
 
-    if (move_uploaded_file($pdf['tmp_name'], $fullPath)) {
-        exit('Success');
-    } else {
-        http_response_code(500);
-        exit('Failed to write to destination. Check permissions.');
+    if (!move_uploaded_file($file['tmp_name'], $destination)) {
+        respond('Failed to save PDF file. Check permissions.', 500);
     }
+
+    respond('Success');
 }
 
-$files  = $_FILES['files'] ?? null;
+/* ==========================================================
+   OPEN FOLDER (WINDOWS ONLY)
+   ========================================================== */
+if ($action === 'open_folder') {
 
-$paths = [];
+    $targetPath = trim($_POST['targetPath'] ?? '');
 
-foreach ($files['tmp_name'] as $i => $tmp) {
-    $dest = $uploadDir . uniqid() . '.pdf';
-    move_uploaded_file($tmp, $dest);
-    $paths[] = $dest;
+    if (
+        $targetPath !== '' &&
+        validatePath($targetPath, $ALLOWED_ROOT) &&
+        is_dir($targetPath)
+    ) {
+        $real = realpath($targetPath);
+        if ($real) {
+            // Open Windows Explorer safely
+            shell_exec('explorer ' . escapeshellarg($real));
+        }
+    }
+    exit;
 }
 
-$output = $uploadDir . uniqid() . '_out.pdf';
-
-switch ($action) {
-
-    case 'merge':
-        $cmd = 'gswin64c -dBATCH -dNOPAUSE -q -sDEVICE=pdfwrite '
-            . '-sOutputFile="' . $output . '" '
-            . implode(' ', array_map('escapeshellarg', $paths));
-        break;
-
-    case 'compress':
-        $cmd = 'gswin64c -sDEVICE=pdfwrite '
-            . '-dCompatibilityLevel=1.4 '
-            . '-dPDFSETTINGS=/ebook '
-            . '-dNOPAUSE -dBATCH '
-            . '-sOutputFile="' . $output . '" '
-            . escapeshellarg($paths[0]);
-        break;
-
-    default:
-        exit('Invalid action');
-}
-
-exec($cmd, $result, $status);
-
-if ($status !== 0) {
-    exit('PDF processing failed');
-}
-
-header('Content-Type: application/pdf');
-header('Content-Disposition: attachment; filename=result.pdf');
-readfile($output);
+/* ==========================================================
+   FALLBACK
+   ========================================================== */
+respond('Invalid action.', 400);

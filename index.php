@@ -10,6 +10,10 @@
 
     <!-- Load PDF.js for visual page thumbnails -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <!-- SweetAlert2 for beautiful alerts -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <script>
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -70,6 +74,13 @@
             padding: 10px 15px;
             margin-bottom: 8px;
             border-radius: 6px;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .file-item.dragging {
+            opacity: 0.4;
+            border: 1px dashed #3182ce;
         }
 
         .file-name {
@@ -114,6 +125,15 @@
             cursor: not-allowed;
         }
 
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+
         .btn-remove {
             background: #fff5f5;
             color: #c53030;
@@ -142,6 +162,11 @@
             cursor: not-allowed;
         }
 
+        .btn-group-input {
+            display: flex;
+            gap: 5px;
+        }
+
         .settings-group {
             margin-bottom: 20px;
         }
@@ -160,6 +185,12 @@
             border: 1px solid #e2e8f0;
             border-radius: 6px;
             box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+
+        .settings-group input:focus {
+            border-color: #3182ce;
+            outline: none;
         }
 
         .progress-container {
@@ -189,6 +220,11 @@
             color: #2d3748;
             font-weight: bold;
             top: 0;
+        }
+
+        #cancelBtn {
+            display: none;
+            margin-top: 5px;
         }
 
         /* Preview Modal */
@@ -256,9 +292,38 @@
             user-select: none;
         }
 
+        .page-card {
+            width: var(--thumb-width, 130px);
+        }
+
         .page-card:hover {
             border-color: #3182ce;
             transform: translateY(-2px);
+        }
+
+        /* Drop Indicators */
+        .page-card.drop-before::before {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 0;
+            bottom: 0;
+            width: 5px;
+            background: #3182ce;
+            border-radius: 4px;
+            z-index: 20;
+        }
+
+        .page-card.drop-after::after {
+            content: '';
+            position: absolute;
+            right: -10px;
+            top: 0;
+            bottom: 0;
+            width: 5px;
+            background: #3182ce;
+            border-radius: 4px;
+            z-index: 20;
         }
 
         .page-card.selected {
@@ -284,6 +349,25 @@
             background: #eee;
             border-radius: 4px;
             margin-bottom: 8px;
+        }
+
+        .page-card.search-match {
+            border-color: #f6ad55;
+            background-color: #fffaf0;
+            box-shadow: 0 0 0 2px #f6ad55;
+        }
+
+        .new-badge {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #48bb78;
+            color: white;
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+            z-index: 10;
         }
 
         .page-checkbox {
@@ -332,6 +416,48 @@
             cursor: pointer;
         }
 
+        .selection-box {
+            position: absolute;
+            border: 2px solid #3182ce;
+            background: rgba(49, 130, 206, 0.15);
+            pointer-events: none;
+            display: none;
+            z-index: 9999;
+        }
+
+        /* Context Menu Styling */
+        .context-menu {
+            display: none;
+            position: absolute;
+            background: white;
+            border: 1px solid #cbd5e0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            border-radius: 8px;
+            z-index: 10000;
+            padding: 5px 0;
+            min-width: 160px;
+        }
+
+        .context-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #4a5568;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:hover {
+            background-color: #ebf8ff;
+            color: #3182ce;
+        }
+
+        .range-group {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+            align-items: center;
+        }
+
         .tab-btn.active {
             color: #3182ce;
             border-bottom: 2px solid #3182ce;
@@ -353,6 +479,32 @@
             font-size: 11px;
             color: #718096;
             display: block;
+        }
+
+        /* SweetAlert2 Customization */
+        .swal2-popup {
+            border-radius: 12px !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+        }
+
+        .swal2-title {
+            color: #2d3748 !important;
+            font-weight: 600 !important;
+        }
+
+        .swal2-styled {
+            border-radius: 6px !important;
+            font-weight: 600 !important;
+            padding: 10px 24px !important;
+        }
+
+        .swal2-loader {
+            border-color: #48bb78 transparent #48bb78 transparent !important;
+        }
+
+        /* Custom Progress Bar inside Swal */
+        .swal-progress-bar {
+            background: #48bb78 !important;
         }
     </style>
 </head>
@@ -380,20 +532,52 @@
 
         <!-- Edit/Manager Tab -->
         <div id="editTab" class="tab-content" style="display: none;">
-            <div class="settings-group">
-                <label>Select PDF to Organize</label>
-                <input type="file" id="mainPdf" accept="application/pdf" onchange="loadOrganizer()">
+            <div style="display: flex; gap: 10px; align-items: flex-end; margin-bottom: 15px;">
+                <div class="settings-group" style="margin-bottom: 0; flex-grow: 1;">
+                    <label>Select PDF to Organize</label>
+                    <input type="file" id="mainPdf" accept="application/pdf" onchange="loadOrganizer()">
+                </div>
+                <div id="undoRedoGroup" style="display: none;">
+                    <button class="btn-preview" onclick="undo()" title="Undo (Ctrl+Z)">⟲</button>
+                    <button class="btn-preview" onclick="redo()" title="Redo (Ctrl+Y)">⟳</button>
+                </div>
             </div>
 
-            <div id="organizerControls" style="display: none; margin-bottom: 15px; display: flex; gap: 10px;">
+            <div id="organizerControls" style="display: none; margin-bottom: 15px; display: flex; flex-wrap: wrap; gap: 8px;">
                 <button class="btn-preview" onclick="addBlankPage()">+ Insert Blank Page</button>
                 <button class="btn-preview" onclick="triggerAddFile()">+ Add from File</button>
-                <button id="selectAllBtn" class="btn-preview" style="display: none;" onclick="toggleSelectAll()">Select All</button>
-                <button id="previewOrganizedBtn" class="btn-preview" style="display: none;" onclick="previewFullOrganizedPdf()" title="Preview the entire organized document">Preview Organized PDF</button>
-                <button id="rotateAllBtn" class="btn-preview" style="display: none;" onclick="rotateAllPages()">Rotate All</button>
-                <button id="downloadIndividualBtn" class="btn-preview" style="display: none;" onclick="downloadIndividualSelected()" title="Download selected as separate files">Download Individual</button>
-                <button id="deleteSelectedBtn" class="btn-remove" style="display: none;" onclick="deleteSelectedPages()">Delete Selected</button>
+                <button id="selectAllBtn" class="btn-preview" onclick="toggleSelectAll()">Select All</button>
+                <button id="duplicateSelectedBtn" class="btn-preview" onclick="duplicateSelectedPages()">Duplicate</button>
+                <button id="rotateAllBtn" class="btn-preview" onclick="rotateAllPages()">Rotate All</button>
+                <button id="deleteSelectedBtn" class="btn-remove" onclick="deleteSelectedPages()">Delete Selected</button>
+                <button id="splitBtn" class="btn-secondary" onclick="splitToMultiple()" title="Export every page as a separate PDF">Split into Multiple PDFs</button>
+                <button id="previewOrganizedBtn" class="btn-preview" onclick="previewFullOrganizedPdf()" title="Preview organized PDF">Preview Final</button>
                 <input type="file" id="addFileHidden" accept="application/pdf" style="display: none;" onchange="handleAddFileChange()">
+            </div>
+
+            <div id="rangeActions" style="display: none; padding: 10px; background: #edf2f7; border-radius: 6px; margin-bottom: 15px;">
+                <label style="font-size: 12px; font-weight: bold; color: #4a5568;">Range Actions (e.g. 1, 3, 5-8)</label>
+                <div class="range-group">
+                    <input type="text" id="rangeInput" placeholder="Enter page numbers..." style="flex-grow: 1; padding: 5px; border: 1px solid #cbd5e0; border-radius: 4px;">
+                    <button class="btn-preview btn-tiny" onclick="applyRangeAction('select')">Select</button>
+                    <button class="btn-preview btn-tiny" onclick="applyRangeAction('rotate')">Rotate</button>
+                    <button class="btn-preview btn-tiny" onclick="applyRangeAction('duplicate')">Duplicate</button>
+                    <button class="btn-remove btn-tiny" onclick="applyRangeAction('delete')">Delete</button>
+                </div>
+            </div>
+
+            <div id="searchGroup" style="display: none; margin-bottom: 15px; padding: 10px; background: #ebf4ff; border-radius: 6px;">
+                <label style="font-size: 12px; font-weight: bold; color: #2b6cb0;">Search Content</label>
+                <div class="range-group">
+                    <input type="text" id="pageSearchInput" placeholder="Find text in pages..." style="flex-grow: 1; padding: 5px; border: 1px solid #bee3f8; border-radius: 4px;">
+                    <button class="btn-preview btn-tiny" onclick="searchPages()">Search</button>
+                    <button class="btn-remove btn-tiny" onclick="document.getElementById('pageSearchInput').value=''; searchPages()">Clear</button>
+                </div>
+            </div>
+
+            <div id="zoomGroup" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 12px; color: #718096;">Zoom</span>
+                <input type="range" id="zoomSlider" min="80" max="300" value="130" oninput="adjustZoom(this.value)">
             </div>
 
             <div id="pageGrid" class="page-grid">
@@ -406,7 +590,10 @@
         <!-- Common Settings -->
         <div class="settings-group" style="margin-top: 20px;">
             <label for="outName">Output Filename</label>
-            <input type="text" id="outName" placeholder="merged-document" value="merged">
+            <div class="btn-group-input">
+                <input type="text" id="outName" placeholder="merged-document" value="merged" style="flex-grow: 1;">
+                <button type="button" class="btn-preview" onclick="pasteFromClipboard()" title="Paste from clipboard">📋 Paste</button>
+            </div>
             <div style="margin-top: 10px; font-size: 14px; color: #4a5568;">
                 <input type="checkbox" id="clearAfter" checked>
                 <label for="clearAfter" style="display: inline; font-weight: normal;">Clear list after success</label>
@@ -416,7 +603,8 @@
         <div class="settings-group">
             <label for="savePath">Automatic Save Path (Optional - Local Only)</label>
             <div style="display: flex; gap: 5px;">
-                <input type="text" id="savePath" placeholder="e.g., C:/Users/Documents/Merged/" style="flex-grow: 1;" value="U:\01_TESP\00_COMMON\020_ACG\vouchers\MERGE">
+                <input type="text" id="savePath" style="flex-grow: 1; background-color: #f7fafc; color: #718096; cursor: default;" value="U:\01_TESP\00_COMMON\020_ACG\vouchers\MERGE" readonly>
+                <button type="button" class="btn-preview" onclick="browseFolder()" title="Browse Folder">Browse</button>
                 <button type="button" class="btn-preview" onclick="testPath()" title="Test Connection">Test</button>
             </div>
         </div>
@@ -424,6 +612,7 @@
         <div id="progressContainer" class="progress-container">
             <div id="progressBar" class="progress-bar"></div>
             <div id="progressText" class="progress-text">0%</div>
+            <button id="cancelBtn" class="btn-remove btn-tiny" onclick="requestCancel()">Cancel Operation</button>
         </div>
 
         <button id="mergeBtn" class="btn-merge" onclick="mergePDFs()" disabled>Merge All Selection</button>
@@ -443,7 +632,34 @@
         </div>
     </div>
 
+    <div id="contextMenu" class="context-menu">
+        <div class="context-menu-item" onclick="rotateFromMenu()">↻ Rotate Selection</div>
+        <div class="context-menu-item" onclick="duplicateFromMenu()">⧉ Duplicate Selection</div>
+        <div class="context-menu-item" style="color: #c53030;" onclick="deleteFromMenu()">✕ Delete Selection</div>
+    </div>
+
     <script>
+        /**
+         * Copies filename to clipboard and automatically fills output name field
+         */
+        function copyToClipboard(text) {
+            const cleanName = text.replace(/\.[^/.]+$/, ""); // Remove extension
+            document.getElementById('outName').value = cleanName;
+            navigator.clipboard.writeText(cleanName).catch(err => console.error("Clipboard copy failed", err));
+        }
+
+        /**
+         * Pastes text from clipboard into the output name field
+         */
+        async function pasteFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) document.getElementById('outName').value = text;
+            } catch (err) {
+                Swal.fire("Clipboard Error", "Clipboard access denied. Please paste manually (Ctrl+V) or use a secure connection (HTTPS).", "error");
+            }
+        }
+
         let selectedFiles = [];
         const progressContainer = document.getElementById('progressContainer');
         const progressBar = document.getElementById('progressBar');
@@ -462,9 +678,157 @@
         const previewOrganizedBtn = document.getElementById('previewOrganizedBtn');
         const downloadIndividualBtn = document.getElementById('downloadIndividualBtn');
         const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+        const duplicateSelectedBtn = document.getElementById('duplicateSelectedBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
         const processEditBtn = document.getElementById('processEditBtn');
 
+        // Multi-select Marquee Logic
+        let isSelecting = false;
+        let startX, startY;
+        const selectionBox = document.createElement('div');
+        selectionBox.className = 'selection-box';
+        document.body.appendChild(selectionBox);
+
+        pageGrid.addEventListener('mousedown', (e) => {
+            // Only trigger on left-click on the grid background or the cards (but not buttons/inputs)
+            if (e.button !== 0) return;
+            if (e.target.closest('.page-actions') || e.target.closest('.page-checkbox') || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+
+            // If we click directly on a card, we usually want to allow drag-and-drop to start 
+            // instead of a marquee, unless we are holding a modifier key.
+            if (e.target.closest('.page-card') && !e.shiftKey && !e.ctrlKey) return;
+
+            isSelecting = true;
+            startX = e.pageX;
+            startY = e.pageY;
+
+            selectionBox.style.left = `${startX}px`;
+            selectionBox.style.top = `${startY}px`;
+            selectionBox.style.width = '0px';
+            selectionBox.style.height = '0px';
+            selectionBox.style.display = 'block';
+
+            // Clear selection if no modifier key is held
+            if (!e.ctrlKey && !e.shiftKey) {
+                organizerPages.forEach(p => p.selected = false);
+                renderOrganizer();
+            }
+
+            e.preventDefault(); // Prevent text selection/drag triggers
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isSelecting) return;
+
+            const curX = e.pageX;
+            const curY = e.pageY;
+
+            const left = Math.min(startX, curX);
+            const top = Math.min(startY, curY);
+            const width = Math.abs(startX - curX);
+            const height = Math.abs(startY - curY);
+
+            selectionBox.style.left = `${left}px`;
+            selectionBox.style.top = `${top}px`;
+            selectionBox.style.width = `${width}px`;
+            selectionBox.style.height = `${height}px`;
+
+            const boxRect = selectionBox.getBoundingClientRect();
+            const cards = document.querySelectorAll('.page-card');
+
+            cards.forEach((card, idx) => {
+                const cardRect = card.getBoundingClientRect();
+                const isOverlapping = !(boxRect.right < cardRect.left ||
+                    boxRect.left > cardRect.right ||
+                    boxRect.bottom < cardRect.top ||
+                    boxRect.top > cardRect.bottom);
+
+                if (isOverlapping) {
+                    if (!organizerPages[idx].selected) {
+                        organizerPages[idx].selected = true;
+                        card.classList.add('selected');
+                        const cb = card.querySelector('.page-checkbox');
+                        if (cb) cb.checked = true;
+                    }
+                }
+            });
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (!isSelecting) return;
+            isSelecting = false;
+            selectionBox.style.display = 'none';
+            updateOrganizerControls(); // Sync button states
+        });
+
+        // Context Menu Logic
+        let contextMenuPageIndex = null;
+
+        function showContextMenu(e, index) {
+            e.preventDefault();
+            contextMenuPageIndex = index;
+
+            // Auto-select if not already part of selection (standard UX)
+            if (!organizerPages[index].selected) {
+                organizerPages.forEach(p => p.selected = false);
+                organizerPages[index].selected = true;
+                renderOrganizer();
+            }
+
+            const menu = document.getElementById('contextMenu');
+            menu.style.display = 'block';
+            menu.style.left = `${e.pageX}px`;
+            menu.style.top = `${e.pageY}px`;
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').style.display = 'none';
+        }
+
+        window.addEventListener('click', hideContextMenu);
+        window.addEventListener('scroll', hideContextMenu);
+
+        function rotateFromMenu() {
+            if (contextMenuPageIndex === null) return;
+            const selectedPages = organizerPages.filter(p => p.selected);
+            if (selectedPages.length === 0) return;
+            saveState();
+            selectedPages.forEach(p => p.rotation = (p.rotation + 90) % 360);
+            renderOrganizer();
+        }
+
+        function deleteFromMenu() {
+            if (contextMenuPageIndex === null) return;
+            deleteSelectedPages();
+        }
+
+        function duplicateFromMenu() {
+            if (contextMenuPageIndex === null) return;
+            applyRangeAction('duplicate', true);
+        }
+
         let organizerPages = []; // Tracks { file, sourceIndex, rotation, isBlank, thumbnail }
+        let pdfjsCache = new Map(); // Cache PDF.js documents to prevent redundant re-loading
+        let undoStack = [];
+        let redoStack = [];
+        let cancelRequested = false;
+
+        function saveState() {
+            if (undoStack.length > 30) undoStack.shift();
+            undoStack.push(JSON.stringify(organizerPages.map(p => {
+                const {
+                    thumbnail,
+                    ...rest
+                } = p; // Don't stringify massive dataURLs
+                return rest;
+            })));
+            redoStack = [];
+            document.getElementById('undoRedoGroup').style.display = 'flex';
+        }
+
+        function requestCancel() {
+            cancelRequested = true;
+        }
         let dragSrcEl = null;
 
         function switchTab(tabId) {
@@ -476,6 +840,38 @@
 
             // Hide open folder button when switching
             openFolderBtn.style.display = 'none';
+        }
+
+        function adjustZoom(val) {
+            document.documentElement.style.setProperty('--thumb-width', val + 'px');
+        }
+
+        function undo() {
+            if (undoStack.length === 0) return;
+            const currentState = JSON.stringify(organizerPages.map(p => {
+                const {
+                    thumbnail,
+                    ...rest
+                } = p;
+                return rest;
+            }));
+            redoStack.push(currentState);
+            organizerPages = JSON.parse(undoStack.pop());
+            renderOrganizer();
+        }
+
+        function redo() {
+            if (redoStack.length === 0) return;
+            const currentState = JSON.stringify(organizerPages.map(p => {
+                const {
+                    thumbnail,
+                    ...rest
+                } = p;
+                return rest;
+            }));
+            undoStack.push(currentState);
+            organizerPages = JSON.parse(redoStack.pop());
+            renderOrganizer();
         }
 
         // File Drop Logic for Page Manager Grid
@@ -539,9 +935,17 @@
             selectedFiles.forEach((file, index) => {
                 const item = document.createElement('div');
                 item.className = 'file-item';
+                item.draggable = true;
+                item.dataset.index = index;
+                item.addEventListener('dragstart', handleMergeDragStart);
+                item.addEventListener('dragover', handleMergeDragOver);
+                item.addEventListener('drop', handleMergeDrop);
+                item.addEventListener('dragend', handleMergeDragEnd);
+                const fileNameSafe = file.name.replace(/'/g, "\\'");
                 item.innerHTML = `
                     <div class="file-name">${file.name}</div>
                     <div class="controls">
+                        <button class="btn-preview" onclick="copyToClipboard('${fileNameSafe}')" title="Copy & Use as Output Name">📋</button>
                         <button class="btn-preview" onclick="previewFile(${index})" title="Preview">👁</button>
                         <button class="btn-move" onclick="move(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
                         <button class="btn-move" onclick="move(${index}, 1)" ${index === selectedFiles.length - 1 ? 'disabled' : ''}>↓</button>
@@ -554,7 +958,35 @@
             clearAllBtn.style.display = selectedFiles.length > 0 ? 'block' : 'none';
         }
 
+        function handleMergeDragStart(e) {
+            this.classList.add('dragging');
+            dragSrcEl = this;
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleMergeDragOver(e) {
+            e.preventDefault();
+            return false;
+        }
+
+        function handleMergeDrop(e) {
+            e.stopPropagation();
+            if (dragSrcEl !== this && dragSrcEl.classList.contains('file-item')) {
+                const fromIndex = parseInt(dragSrcEl.dataset.index);
+                const toIndex = parseInt(this.dataset.index);
+                const item = selectedFiles.splice(fromIndex, 1)[0];
+                selectedFiles.splice(toIndex, 0, item);
+                renderList();
+            }
+            return false;
+        }
+
+        function handleMergeDragEnd() {
+            this.classList.remove('dragging');
+        }
+
         function move(index, direction) {
+            saveState();
             const newIndex = index + direction;
             if (newIndex >= 0 && newIndex < selectedFiles.length) {
                 [selectedFiles[index], selectedFiles[newIndex]] = [selectedFiles[newIndex], selectedFiles[index]];
@@ -568,9 +1000,21 @@
         }
 
         function clearAllFiles() {
-            if (selectedFiles.length > 0 && confirm("Are you sure you want to remove all selected files?")) {
-                selectedFiles = [];
-                renderList();
+            if (selectedFiles.length > 0) {
+                Swal.fire({
+                    title: 'Clear All Files?',
+                    text: "Are you sure you want to remove all selected files from the list?",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#3182ce',
+                    cancelButtonColor: '#c53030',
+                    confirmButtonText: 'Yes, clear all'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        selectedFiles = [];
+                        renderList();
+                    }
+                });
             }
         }
 
@@ -622,10 +1066,20 @@
         }
 
         function clearHistory() {
-            if (confirm("Clear merge history?")) {
-                localStorage.removeItem('pdfMergeHistory');
-                renderHistory();
-            }
+            Swal.fire({
+                title: 'Clear History?',
+                text: "This will remove all recent merge records.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#3182ce',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Yes, clear it'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    localStorage.removeItem('pdfMergeHistory');
+                    renderHistory();
+                }
+            });
         }
 
         // Initialize history on load
@@ -641,14 +1095,46 @@
                     body: formData
                 });
             } catch (e) {
-                alert("Could not open folder.");
+                Swal.fire("Error", "Could not open folder.", "error");
+            }
+        }
+
+        function handlePathChange() {
+            // Hide the open folder button because the path has changed and is no longer verified
+            openFolderBtn.style.display = 'none';
+            document.getElementById('savePath').style.borderColor = '#e2e8f0';
+        }
+
+        async function browseFolder() {
+            const currentPath = document.getElementById('savePath').value.trim();
+            const formData = new FormData();
+            formData.append('action', 'browse_folder');
+            formData.append('targetPath', currentPath);
+
+            try {
+                const response = await fetch('process.php', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (response.ok) {
+                    const newPath = await response.text();
+                    if (newPath) {
+                        document.getElementById('savePath').value = newPath;
+                        handlePathChange(); // Reset verification state until re-tested
+                    }
+                } else {
+                    const err = await response.text();
+                    if (err) Swal.fire("Browse Error", err, "error");
+                }
+            } catch (e) {
+                Swal.fire("Error", "Could not trigger folder picker. Ensure XAMPP is running interactively.", "error");
             }
         }
 
         async function testPath() {
             const savePath = document.getElementById('savePath').value.trim();
             if (!savePath) {
-                alert("Please enter a path first.");
+                Swal.fire("Input Required", "Please enter a path first.", "warning");
                 return;
             }
             try {
@@ -660,9 +1146,19 @@
                     body: formData
                 });
                 const result = await response.text();
-                alert(result);
+                const isSuccess = result.toLowerCase().includes('success');
+
+                if (isSuccess) {
+                    document.getElementById('savePath').style.borderColor = '#48bb78';
+                }
+
+                Swal.fire({
+                    title: 'Path Test',
+                    text: result,
+                    icon: isSuccess ? 'success' : 'warning'
+                });
             } catch (e) {
-                alert("Error connecting to local server: " + e.message);
+                Swal.fire("Connection Error", "Error connecting to local server: " + e.message, "error");
             }
         }
 
@@ -677,12 +1173,13 @@
                     body: formData
                 });
             } catch (e) {
-                alert("Could not open folder.");
+                Swal.fire("Error", "Could not open folder.", "error");
             }
         }
 
         function togglePageSelection(index) {
             organizerPages[index].selected = !organizerPages[index].selected;
+            // No saveState for selection
             renderOrganizer();
         }
 
@@ -693,7 +1190,15 @@
             renderOrganizer();
         }
 
+        function duplicateSelectedPages() {
+            const selectedCount = organizerPages.filter(p => p.selected).length;
+            if (selectedCount === 0) return;
+            saveState();
+            applyRangeAction('duplicate', true);
+        }
+
         function rotateAllPages() {
+            saveState();
             if (organizerPages.length === 0) return;
             organizerPages.forEach(p => {
                 p.rotation = (p.rotation + 90) % 360;
@@ -701,16 +1206,139 @@
             renderOrganizer();
         }
 
+        function parsePageRange(text, max) {
+            const indices = new Set();
+            const parts = text.split(',');
+            parts.forEach(p => {
+                const range = p.trim().split('-');
+                if (range.length === 1) {
+                    const val = parseInt(range[0]);
+                    if (val > 0 && val <= max) indices.add(val - 1);
+                } else if (range.length === 2) {
+                    const start = parseInt(range[0]);
+                    const end = parseInt(range[1]);
+                    if (!isNaN(start) && !isNaN(end)) {
+                        for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
+                            if (i > 0 && i <= max) indices.add(i - 1);
+                        }
+                    }
+                }
+            });
+            return Array.from(indices).sort((a, b) => a - b);
+        }
+
+        function applyRangeAction(action, useSelection = false) {
+            const input = document.getElementById('rangeInput').value;
+            const indices = useSelection ?
+                organizerPages.map((p, i) => p.selected ? i : -1).filter(i => i !== -1) :
+                parsePageRange(input, organizerPages.length);
+            if (indices.length === 0 && !useSelection) return;
+
+            if (action !== 'select') saveState();
+
+            if (action === 'select') {
+                organizerPages.forEach((p, i) => p.selected = indices.includes(i));
+            } else if (action === 'rotate') {
+                indices.forEach(i => organizerPages[i].rotation = (organizerPages[i].rotation + 90) % 360);
+            } else if (action === 'delete') {
+                organizerPages = organizerPages.filter((_, i) => !indices.includes(i));
+            } else if (action === 'duplicate') {
+                const newPages = [];
+                organizerPages.forEach((p, i) => {
+                    newPages.push(p);
+                    if (indices.includes(i)) newPages.push({
+                        ...p,
+                        selected: false,
+                        isNew: true
+                    });
+                });
+                organizerPages = newPages;
+            }
+            renderOrganizer();
+        }
+
+        async function splitToMultiple() {
+            const targets = organizerPages.filter(p => p.selected).length > 0 ?
+                organizerPages.filter(p => p.selected) :
+                organizerPages;
+
+            const result = await Swal.fire({
+                title: 'Split PDF?',
+                text: `This will export ${targets.length} separate PDF files. Continue?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3182ce',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Yes, split'
+            });
+            if (!result.isConfirmed) return;
+
+            cancelRequested = false;
+
+            Swal.fire({
+                title: 'Splitting PDF',
+                html: `
+                    <div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Initializing...</div>
+                    <div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">
+                        <div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div>
+                    </div>
+                `,
+                showCancelButton: true,
+                cancelButtonText: 'Cancel Split',
+                cancelButtonColor: '#718096',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: async () => {
+                    Swal.showLoading();
+                    const swalBar = document.getElementById('swal-progress-bar');
+                    const swalText = document.getElementById('swal-progress-text');
+
+                    try {
+                        for (let i = 0; i < targets.length; i++) {
+                            if (cancelRequested) throw new Error('Split cancelled');
+                            const pageEntry = targets[i];
+                            const progress = Math.round(((i + 1) / targets.length) * 100);
+
+                            swalText.textContent = `Processing page ${i + 1} of ${targets.length}...`;
+                            swalBar.style.width = `${progress}%`;
+
+                            const blob = await generateSinglePageBlob(pageEntry);
+                            const link = document.createElement("a");
+                            link.href = URL.createObjectURL(blob);
+                            link.download = `page_${i + 1}_split.pdf`;
+                            link.click();
+                            // Brief delay to prevent browser download queue issues
+                            await new Promise(r => setTimeout(r, 100));
+                        }
+                        Swal.fire("Success", "Split complete.", "success");
+                    } catch (e) {
+                        if (e.message !== 'Split cancelled') {
+                            Swal.fire("Error", e.message, "error");
+                        }
+                    }
+                }
+            }).then((result) => {
+                if (result.dismiss === Swal.DismissReason.cancel) {
+                    cancelRequested = true;
+                    Swal.fire({
+                        title: 'Cancelled',
+                        text: 'Split process was stopped.',
+                        icon: 'info',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+            });
+        }
+
         async function downloadIndividualSelected() {
             const selected = organizerPages.filter(p => p.selected);
             if (selected.length === 0) {
-                alert("Please select pages to download.");
+                Swal.fire("Selection Required", "Please select pages to download.", "warning");
                 return;
             }
-
             progressContainer.style.display = 'block';
             progressText.textContent = 'Preparing individual downloads...';
-
             try {
                 for (let i = 0; i < selected.length; i++) {
                     const pageEntry = selected[i];
@@ -721,17 +1349,28 @@
                     link.click();
                 }
             } catch (e) {
-                alert("Error during individual download: " + e.message);
+                Swal.fire("Error", "Error during individual download: " + e.message, "error");
             } finally {
                 progressContainer.style.display = 'none';
             }
         }
 
-        function deleteSelectedPages() {
+        async function deleteSelectedPages() {
             const selectedCount = organizerPages.filter(p => p.selected).length;
             if (selectedCount === 0) return;
 
-            if (confirm(`Are you sure you want to delete ${selectedCount} selected pages?`)) {
+            const result = await Swal.fire({
+                title: 'Delete Pages?',
+                text: `Are you sure you want to delete ${selectedCount} selected pages?`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#c53030',
+                cancelButtonColor: '#718096',
+                confirmButtonText: 'Yes, delete'
+            });
+
+            if (result.isConfirmed) {
+                saveState();
                 organizerPages = organizerPages.filter(p => !p.selected);
                 renderOrganizer();
             }
@@ -749,7 +1388,18 @@
                 const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
                 const pageCount = pdfDoc.getPageCount();
 
-                const pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                // PDF.js Caching: Reuse document if possible
+                let pdfjsDoc;
+                const cacheKey = file.name + file.size;
+                if (pdfjsCache.has(cacheKey)) {
+                    pdfjsDoc = pdfjsCache.get(cacheKey);
+                } else {
+                    pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    pdfjsCache.set(cacheKey, pdfjsDoc);
+                }
+
+                // Adaptive Quality: Reduce quality for very large documents to save memory
+                const thumbQuality = pageCount > 50 ? 0.5 : 0.7;
 
                 // Create placeholders immediately so UI is interactive
                 organizerPages = Array.from({
@@ -765,29 +1415,37 @@
                 }));
 
                 document.getElementById('organizerControls').style.display = 'flex';
+                document.getElementById('rangeActions').style.display = 'block';
+                document.getElementById('searchGroup').style.display = 'block';
+                document.getElementById('zoomGroup').style.display = 'flex';
+
                 processEditBtn.disabled = false;
                 renderOrganizer();
 
                 // Background rendering of thumbnails
                 progressText.textContent = 'Generating previews in background...';
-                loadThumbnails(pdfjsDoc, 0, organizerPages.length);
+                loadThumbnails(pdfjsDoc, 0, organizerPages.length, thumbQuality);
 
             } catch (e) {
-                alert("Error loading PDF: " + e.message);
+                Swal.fire("Error", "Error loading PDF: " + e.message, "error");
             } finally {
                 progressContainer.style.display = 'none';
                 progressBar.style.width = '0%';
             }
         }
 
-        async function loadThumbnails(pdfjsDoc, startIndex, count) {
+        async function loadThumbnails(pdfjsDoc, startIndex, count, quality = 0.7) {
             for (let i = 0; i < count; i++) {
+                if (cancelRequested) break;
                 const idx = startIndex + i;
                 // Only render if not already rendered (relevant for multiple file adds)
                 if (organizerPages[idx] && !organizerPages[idx].thumbnail && !organizerPages[idx].isBlank) {
-                    generateThumbnail(pdfjsDoc, organizerPages[idx].sourceIndex + 1).then(url => {
+                    try {
+                        const url = await generateThumbnail(pdfjsDoc, organizerPages[idx].sourceIndex + 1, quality);
+                        if (!organizerPages[idx]) continue; // Guard against list cleared during async
                         organizerPages[idx].thumbnail = url;
-                        // Target the specific image to avoid full grid re-render
+
+                        // Target the specific image to avoid heavy full grid re-renders
                         const img = document.getElementById(`thumb-${idx}`);
                         if (img) {
                             img.src = url;
@@ -795,7 +1453,11 @@
                             const placeholder = img.previousElementSibling;
                             if (placeholder && placeholder.classList.contains('thumb-placeholder')) placeholder.remove();
                         }
-                    });
+                    } catch (e) {
+                        console.warn("Thumbnail generation failed for index " + idx, e);
+                    }
+                    // Lazy rendering: yield to main thread every 3 pages
+                    if (i % 3 === 0) await new Promise(r => setTimeout(r, 10));
                 }
             }
         }
@@ -805,8 +1467,11 @@
             organizerPages.forEach((page, index) => {
                 const card = document.createElement('div');
                 card.className = `page-card ${page.selected ? 'selected' : ''}`;
+                card.className = `page-card ${page.selected ? 'selected' : ''} ${page.searchMatch ? 'search-match' : ''}`;
                 card.draggable = true;
                 card.dataset.index = index;
+
+                card.oncontextmenu = (e) => showContextMenu(e, index);
 
                 card.innerHTML = `
                     <input type="checkbox" class="page-checkbox" ${page.selected ? 'checked' : ''} onclick="event.stopPropagation(); togglePageSelection(${index})">
@@ -839,45 +1504,59 @@
                 pageGrid.appendChild(card);
             });
 
+            updateOrganizerControls();
+        }
+
+        function updateOrganizerControls() {
             const selectedCount = organizerPages.filter(p => p.selected).length;
             deleteSelectedBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
             deleteSelectedBtn.textContent = `Delete Selected (${selectedCount})`;
+            duplicateSelectedBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
 
-            downloadIndividualBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
-            previewOrganizedBtn.style.display = organizerPages.length > 0 ? 'inline-block' : 'none';
-            rotateAllBtn.style.display = organizerPages.length > 0 ? 'inline-block' : 'none';
-
-            selectAllBtn.style.display = organizerPages.length > 0 ? 'inline-block' : 'none';
             selectAllBtn.textContent = (organizerPages.length > 0 && selectedCount === organizerPages.length) ? 'Deselect All' : 'Select All';
         }
+
 
         function handleDragStart(e) {
             this.classList.add('dragging');
             dragSrcEl = this;
+            // Set dummy data for Firefox
+            e.dataTransfer.setData('text/plain', '');
             e.dataTransfer.effectAllowed = 'move';
         }
 
         function handleDragOver(e) {
             e.preventDefault();
+            const rect = this.getBoundingClientRect();
+            const relX = e.clientX - rect.left;
+
+            this.classList.remove('drop-before', 'drop-after');
+            if (relX < rect.width / 2) {
+                this.classList.add('drop-before');
+            } else {
+                this.classList.add('drop-after');
+            }
             return false;
         }
 
         function handleDragEnter(e) {
-            this.classList.add('drag-over');
+            // Visual feedback handled by handleDragOver
         }
 
         function handleDragLeave(e) {
-            this.classList.remove('drag-over');
+            this.classList.remove('drop-before', 'drop-after');
         }
 
         function handleDrop(e) {
             e.stopPropagation();
             e.preventDefault();
-            this.classList.remove('drag-over');
+
+            const isBefore = this.classList.contains('drop-before');
+            this.classList.remove('drop-before', 'drop-after');
 
             // Handle File Drop directly onto a card
             if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                const insertAt = parseInt(this.dataset.index) + 1;
+                const insertAt = parseInt(this.dataset.index) + (isBefore ? 0 : 1);
                 const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
                 if (files.length > 0) {
                     (async () => {
@@ -889,8 +1568,13 @@
 
             // Handle Page Reordering
             if (dragSrcEl !== this) {
+                saveState();
+
                 const fromIndex = parseInt(dragSrcEl.dataset.index);
-                const toIndex = parseInt(this.dataset.index);
+                let toIndex = parseInt(this.dataset.index);
+
+                if (!isBefore && fromIndex > toIndex) toIndex++;
+                if (isBefore && fromIndex < toIndex) toIndex--;
 
                 const item = organizerPages.splice(fromIndex, 1)[0];
                 organizerPages.splice(toIndex, 0, item);
@@ -904,17 +1588,21 @@
         }
 
         function rotatePage(index) {
+            saveState();
             organizerPages[index].rotation = (organizerPages[index].rotation + 90) % 360;
             renderOrganizer();
         }
 
         function deleteOrganizerPage(index) {
+            saveState();
             organizerPages.splice(index, 1);
             renderOrganizer();
         }
 
         function addBlankPage() {
+            saveState();
             const lastSelected = organizerPages.findLastIndex(p => p.selected);
+
             const insertAt = lastSelected !== -1 ? lastSelected + 1 : organizerPages.length;
 
             organizerPages.splice(insertAt, 0, {
@@ -945,13 +1633,23 @@
         async function addFileToOrganizer(file, insertAt = -1) {
             const targetIndex = insertAt === -1 ? organizerPages.length : insertAt;
             try {
+                saveState();
+
                 progressContainer.style.display = 'block';
                 progressText.textContent = 'Adding file...';
 
                 const arrayBuffer = await file.arrayBuffer();
                 const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
                 const pageCount = pdfDoc.getPageCount();
-                const pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+                let pdfjsDoc;
+                const cacheKey = file.name + file.size;
+                if (pdfjsCache.has(cacheKey)) {
+                    pdfjsDoc = pdfjsCache.get(cacheKey);
+                } else {
+                    pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    pdfjsCache.set(cacheKey, pdfjsDoc);
+                }
 
                 const newPages = Array.from({
                     length: pageCount
@@ -971,7 +1669,7 @@
                 loadThumbnails(pdfjsDoc, targetIndex, pageCount);
                 scrollToIndex(targetIndex);
             } catch (e) {
-                alert("Error adding file: " + e.message);
+                Swal.fire("Error", "Error adding file: " + e.message, "error");
             } finally {
                 progressContainer.style.display = 'none';
             }
@@ -989,43 +1687,71 @@
 
         async function previewFullOrganizedPdf() {
             if (organizerPages.length === 0) {
-                alert("No pages to preview.");
+                Swal.fire("No Pages", "No pages to preview.", "warning");
                 return;
             }
+            cancelRequested = false;
 
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '50%';
-            progressText.textContent = 'Generating full preview...';
+            Swal.fire({
+                title: 'Preparing Full Preview',
+                html: `
+                    <div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Initializing...</div>
+                    <div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">
+                        <div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div>
+                    </div>
+                `,
+                showCancelButton: true,
+                cancelButtonText: 'Cancel',
+                cancelButtonColor: '#718096',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: async () => {
+                    Swal.showLoading();
+                    const swalBar = document.getElementById('swal-progress-bar');
+                    const swalText = document.getElementById('swal-progress-text');
 
-            try {
-                const {
-                    PDFDocument,
-                    degrees
-                } = PDFLib;
-                const resultPdf = await PDFDocument.create();
-                const fileCache = new Map(); // Reuse file cache from processPageEdit
+                    try {
+                        const {
+                            PDFDocument,
+                            degrees
+                        } = PDFLib;
+                        const resultPdf = await PDFDocument.create();
+                        const fileCache = new Map();
 
-                for (const pageEntry of organizerPages) {
-                    if (pageEntry.isBlank) {
-                        resultPdf.addPage();
-                    } else {
-                        if (!fileCache.has(pageEntry.file)) fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
-                        const srcDoc = fileCache.get(pageEntry.file);
-                        const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
-                        if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
-                        resultPdf.addPage(copiedPage);
+                        for (let i = 0; i < organizerPages.length; i++) {
+                            if (cancelRequested) throw new Error('Preview cancelled');
+                            const pageEntry = organizerPages[i];
+                            const progress = Math.round(((i + 1) / organizerPages.length) * 100);
+                            swalBar.style.width = `${progress}%`;
+                            swalText.textContent = `Processing page ${i + 1} of ${organizerPages.length}`;
+
+                            if (pageEntry.isBlank) {
+                                resultPdf.addPage();
+                            } else {
+                                if (!fileCache.has(pageEntry.file)) fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
+                                const srcDoc = fileCache.get(pageEntry.file);
+                                const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
+                                if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+                                resultPdf.addPage(copiedPage);
+                            }
+                        }
+                        const blob = new Blob([await resultPdf.save()], {
+                            type: "application/pdf"
+                        });
+                        document.getElementById('previewFrame').src = URL.createObjectURL(blob);
+                        document.getElementById('previewModal').style.display = 'block';
+                        Swal.close();
+                    } catch (e) {
+                        if (e.message !== 'Preview cancelled') {
+                            Swal.fire("Error", "Failed to generate full preview: " + e.message, "error");
+                        }
                     }
                 }
-                const blob = new Blob([await resultPdf.save()], {
-                    type: "application/pdf"
-                });
-                document.getElementById('previewFrame').src = URL.createObjectURL(blob);
-                document.getElementById('previewModal').style.display = 'block';
-            } catch (e) {
-                alert("Failed to generate full preview: " + e.message);
-            } finally {
-                progressContainer.style.display = 'none';
-            }
+            }).then((result) => {
+                if (result.dismiss === Swal.DismissReason.cancel) {
+                    cancelRequested = true;
+                }
+            });
         }
 
         async function previewOrganizerPage(index) {
@@ -1037,7 +1763,7 @@
                 document.getElementById('previewFrame').src = URL.createObjectURL(blob);
                 document.getElementById('previewModal').style.display = 'block';
             } catch (e) {
-                alert("Failed to generate preview: " + e.message);
+                Swal.fire("Error", "Failed to generate preview: " + e.message, "error");
             } finally {
                 progressContainer.style.display = 'none';
             }
@@ -1066,7 +1792,7 @@
             });
         }
 
-        async function generateThumbnail(pdfjsDoc, pageNum) {
+        async function generateThumbnail(pdfjsDoc, pageNum, quality = 0.7) {
             const page = await pdfjsDoc.getPage(pageNum);
             const viewport = page.getViewport({
                 scale: 0.3
@@ -1080,55 +1806,139 @@
                 canvasContext: context,
                 viewport: viewport
             }).promise;
-            return canvas.toDataURL('image/jpeg', 0.7); // Compress as JPEG with 70% quality
+            return canvas.toDataURL('image/jpeg', quality);
         }
 
+        async function searchPages() {
+            const query = document.getElementById('pageSearchInput').value.toLowerCase().trim();
+            if (!query) {
+                organizerPages.forEach(p => p.searchMatch = false);
+                renderOrganizer();
+                return;
+            }
+
+            cancelRequested = false;
+
+            Swal.fire({
+                title: 'Searching Pages',
+                html: `
+                    <div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Searching content...</div>
+                    <div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">
+                        <div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div>
+                    </div>
+                `,
+                showCancelButton: true,
+                cancelButtonText: 'Stop Search',
+                cancelButtonColor: '#718096',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: async () => {
+                    Swal.showLoading();
+                    const swalBar = document.getElementById('swal-progress-bar');
+                    const swalText = document.getElementById('swal-progress-text');
+
+                    try {
+                        for (let i = 0; i < organizerPages.length; i++) {
+                            if (cancelRequested) break;
+                            const p = organizerPages[i];
+
+                            if (!p.isBlank && p.textContent === undefined) {
+                                const cacheKey = p.file.name + p.file.size;
+                                const pdfjsDoc = pdfjsCache.get(cacheKey);
+                                if (pdfjsDoc) {
+                                    const page = await pdfjsDoc.getPage(p.sourceIndex + 1);
+                                    const content = await page.getTextContent();
+                                    p.textContent = content.items.map(item => item.str).join(' ').toLowerCase();
+                                }
+                            }
+                            p.searchMatch = p.textContent && p.textContent.includes(query);
+                            const progress = Math.round(((i + 1) / organizerPages.length) * 100);
+                            swalBar.style.width = `${progress}%`;
+                            swalText.textContent = `Searching page ${i + 1} of ${organizerPages.length}...`;
+                        }
+                        Swal.close();
+                    } catch (e) {
+                        console.error("Search failed:", e);
+                        Swal.fire("Search Error", e.message, "error");
+                    } finally {
+                        renderOrganizer();
+                    }
+                }
+            }).then((result) => {
+                if (result.dismiss === Swal.DismissReason.cancel) {
+                    cancelRequested = true;
+                }
+            });
+        }
 
         async function processPageEdit() {
             if (organizerPages.length === 0) return;
 
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '50%';
-            progressText.textContent = 'Building organized PDF...';
+            cancelRequested = false;
 
-            try {
-                const {
-                    PDFDocument,
-                    degrees
-                } = PDFLib;
-                const resultPdf = await PDFDocument.create();
+            Swal.fire({
+                title: 'Saving Organized PDF',
+                html: `
+                    <div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Initializing...</div>
+                    <div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">
+                        <div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div>
+                    </div>
+                `,
+                showCancelButton: true,
+                cancelButtonText: 'Cancel',
+                cancelButtonColor: '#718096',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: async () => {
+                    Swal.showLoading();
+                    const swalBar = document.getElementById('swal-progress-bar');
+                    const swalText = document.getElementById('swal-progress-text');
 
-                // Cache loaded documents to avoid re-loading same file multiple times
-                const fileCache = new Map();
+                    try {
+                        const {
+                            PDFDocument,
+                            degrees
+                        } = PDFLib;
+                        const resultPdf = await PDFDocument.create();
+                        const fileCache = new Map();
 
-                for (const pageEntry of organizerPages) {
-                    if (pageEntry.isBlank) {
-                        resultPdf.addPage(); // Standard A4 blank
-                    } else {
-                        if (!fileCache.has(pageEntry.file)) {
-                            fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
+                        for (let i = 0; i < organizerPages.length; i++) {
+                            if (cancelRequested) throw new Error('Save operation cancelled');
+                            const pageEntry = organizerPages[i];
+                            const progress = Math.round(((i + 1) / organizerPages.length) * 100);
+                            swalBar.style.width = `${progress}%`;
+                            swalText.textContent = `Building page ${i + 1} of ${organizerPages.length}`;
+
+                            if (pageEntry.isBlank) {
+                                resultPdf.addPage();
+                            } else {
+                                if (!fileCache.has(pageEntry.file)) fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
+                                const srcDoc = fileCache.get(pageEntry.file);
+                                const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
+                                if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+                                resultPdf.addPage(copiedPage);
+                            }
                         }
-                        const srcDoc = fileCache.get(pageEntry.file);
-                        const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
 
-                        if (pageEntry.rotation !== 0) {
-                            copiedPage.setRotation(degrees(pageEntry.rotation));
+                        swalText.textContent = 'Finalizing PDF...';
+                        const pdfBytes = await resultPdf.save();
+                        const blob = new Blob([pdfBytes], {
+                            type: "application/pdf"
+                        });
+
+                        Swal.close();
+                        await handleOutput(blob);
+                    } catch (err) {
+                        if (err.message !== 'Save operation cancelled') {
+                            Swal.fire("Error", "Error: " + err.message, "error");
                         }
-                        resultPdf.addPage(copiedPage);
                     }
                 }
-
-                const pdfBytes = await resultPdf.save();
-                const blob = new Blob([pdfBytes], {
-                    type: "application/pdf"
-                });
-                await handleOutput(blob);
-
-            } catch (err) {
-                alert("Error: " + err.message);
-            } finally {
-                progressContainer.style.display = 'none';
-            }
+            }).then((result) => {
+                if (result.dismiss === Swal.DismissReason.cancel) {
+                    cancelRequested = true;
+                }
+            });
         }
 
         async function handleOutput(blob) {
@@ -1146,11 +1956,11 @@
                     body: formData
                 });
                 if (response.ok) {
-                    alert("Saved to: " + savePath + fileName);
+                    Swal.fire("Success", "Saved to: " + savePath + fileName, "success");
                     openFolderBtn.style.display = 'block';
                     addToHistory(fileName, savePath);
                 } else {
-                    alert("Failed to save to local path.");
+                    Swal.fire("Error", "Failed to save to local path.", "error");
                 }
             } else {
                 const link = document.createElement("a");
@@ -1163,100 +1973,126 @@
 
         async function mergePDFs() {
             if (selectedFiles.length < 2) {
-                alert("Please select at least two PDF files.");
+                Swal.fire("Selection Required", "Please select at least two PDF files.", "warning");
                 return;
             }
 
+            cancelRequested = false;
             openFolderBtn.style.display = 'none';
             mergeBtn.disabled = true;
-            mergeBtn.textContent = 'Working...';
-            progressContainer.style.display = 'block';
-            progressBar.style.width = '0%';
-            progressText.textContent = '0%';
 
-            try {
-                if (typeof PDFLib === 'undefined') {
-                    throw new Error("The PDF library could not be loaded. Please check your internet connection or ensure the local library exists in the /js/ folder.");
-                }
+            Swal.fire({
+                title: 'Merging PDFs',
+                html: `
+                    <div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Initializing...</div>
+                    <div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">
+                        <div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div>
+                    </div>
+                `,
+                showCancelButton: true,
+                cancelButtonText: 'Cancel Merge',
+                cancelButtonColor: '#718096',
+                allowOutsideClick: false,
+                showConfirmButton: false,
+                didOpen: async () => {
+                    Swal.showLoading();
+                    const swalBar = document.getElementById('swal-progress-bar');
+                    const swalText = document.getElementById('swal-progress-text');
 
-                const {
-                    PDFDocument
-                } = PDFLib;
-                const mergedPdf = await PDFDocument.create();
-
-                for (let i = 0; i < selectedFiles.length; i++) {
-                    const file = selectedFiles[i];
-                    let pdf;
                     try {
-                        const fileBuffer = await file.arrayBuffer();
-                        // Attempt to load. Note: pdf-lib cannot handle encrypted PDFs.
-                        pdf = await PDFDocument.load(fileBuffer);
-                    } catch (e) {
-                        throw new Error(`Could not load "${file.name}". It might be encrypted or corrupted.`);
+                        if (typeof PDFLib === 'undefined') {
+                            throw new Error("The PDF library could not be loaded.");
+                        }
+
+                        const {
+                            PDFDocument
+                        } = PDFLib;
+                        const mergedPdf = await PDFDocument.create();
+
+                        for (let i = 0; i < selectedFiles.length; i++) {
+                            if (cancelRequested) throw new Error('Merge operation cancelled');
+
+                            const file = selectedFiles[i];
+                            const progress = Math.round(((i + 1) / selectedFiles.length) * 100);
+
+                            swalText.textContent = `Processing: ${file.name}`;
+                            swalBar.style.width = `${progress}%`;
+
+                            try {
+                                const fileBuffer = await file.arrayBuffer();
+                                const pdf = await PDFDocument.load(fileBuffer);
+                                const indices = pdf.getPageIndices();
+                                const copiedPages = await mergedPdf.copyPages(pdf, indices);
+                                copiedPages.forEach(page => mergedPdf.addPage(page));
+                            } catch (e) {
+                                throw new Error(`Could not load "${file.name}".`);
+                            }
+                        }
+
+                        swalText.textContent = 'Finalizing PDF...';
+                        const mergedPdfBytes = await mergedPdf.save();
+                        const blob = new Blob([mergedPdfBytes], {
+                            type: "application/pdf"
+                        });
+
+                        let fileName = document.getElementById('outName').value.trim() || 'merged';
+                        if (!fileName.toLowerCase().endsWith('.pdf')) fileName += '.pdf';
+                        const savePath = document.getElementById('savePath').value.trim();
+
+                        if (savePath) {
+                            swalText.textContent = 'Saving to local path...';
+                            const formData = new FormData();
+                            formData.append('action', 'save_to_path');
+                            formData.append('pdf', blob, fileName);
+                            formData.append('targetPath', savePath);
+
+                            const response = await fetch('process.php', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            const result = await response.text();
+
+                            if (response.ok) {
+                                Swal.fire("Success", "Saved successfully to: " + savePath + fileName, "success");
+                                openFolderBtn.style.display = 'block';
+                                addToHistory(fileName, savePath);
+                            } else {
+                                throw new Error(result);
+                            }
+                        } else {
+                            const link = document.createElement("a");
+                            link.href = URL.createObjectURL(blob);
+                            link.download = fileName;
+                            link.click();
+                            addToHistory(fileName, null);
+                            Swal.close();
+                        }
+
+                        if (document.getElementById('clearAfter').checked) {
+                            selectedFiles = [];
+                            renderList();
+                        }
+
+                    } catch (err) {
+                        if (err.message !== 'Merge operation cancelled') {
+                            Swal.fire("Merge Failed", err.message, "error");
+                        }
+                    } finally {
+                        mergeBtn.disabled = false;
                     }
-
-                    const indices = pdf.getPageIndices();
-                    const copiedPages = await mergedPdf.copyPages(pdf, indices);
-                    copiedPages.forEach(page => mergedPdf.addPage(page));
-
-                    const progress = Math.round(((i + 1) / selectedFiles.length) * 100);
-                    progressBar.style.width = `${progress}%`;
-                    progressText.textContent = `${progress}% - Processing ${file.name}`;
                 }
-
-                progressText.textContent = 'Finalizing PDF...';
-                const mergedPdfBytes = await mergedPdf.save();
-                const blob = new Blob([mergedPdfBytes], {
-                    type: "application/pdf"
-                });
-
-                let fileName = document.getElementById('outName').value.trim() || 'merged';
-                if (!fileName.toLowerCase().endsWith('.pdf')) fileName += '.pdf';
-
-                const savePath = document.getElementById('savePath').value.trim();
-
-                if (savePath) {
-                    // Send to server to save at specific path
-                    progressText.textContent = 'Saving to local path...';
-                    const formData = new FormData();
-                    formData.append('action', 'save_to_path');
-                    formData.append('pdf', blob, fileName);
-                    formData.append('targetPath', savePath);
-
-                    const response = await fetch('process.php', {
-                        method: 'POST',
-                        body: formData
+            }).then((result) => {
+                if (result.dismiss === Swal.DismissReason.cancel) {
+                    cancelRequested = true;
+                    mergeBtn.disabled = false;
+                    Swal.fire({
+                        title: 'Cancelled',
+                        text: 'Merge process was stopped by user.',
+                        icon: 'info',
+                        timer: 2000,
+                        showConfirmButton: false
                     });
-
-                    const result = await response.text();
-                    if (response.ok) {
-                        alert("Saved successfully to: " + savePath + fileName);
-                        openFolderBtn.style.display = 'block';
-                        addToHistory(fileName, savePath);
-                    } else {
-                        throw new Error(result);
-                    }
-                } else {
-                    // Standard browser download
-                    const link = document.createElement("a");
-                    link.href = URL.createObjectURL(blob);
-                    link.download = fileName;
-                    link.click();
-                    addToHistory(fileName, null);
                 }
-
-                if (document.getElementById('clearAfter').checked) {
-                    selectedFiles = [];
-                    renderList();
-                }
-
-            } catch (err) {
-                console.error(err);
-                alert("Merge Failed: " + err.message);
-            } finally {
-                progressContainer.style.display = 'none';
-                mergeBtn.disabled = false;
-                mergeBtn.textContent = 'Merge & Download';
-            }
+            });
         }
     </script>
