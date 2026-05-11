@@ -5,18 +5,19 @@
     <meta charset="UTF-8">
     <title>PDF Merge Tool</title>
 
-    <!-- Load from CDN for immediate use. For offline/secured use, download this file to /js/pdf-lib.min.js and update src. -->
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    <!-- Local versions for offline use -->
+    <script src="js/pdf-lib.min.js"></script>
 
     <!-- Load PDF.js for visual page thumbnails -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="js/pdf.min.js"></script>
 
     <!-- SweetAlert2 for beautiful alerts -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="js/sweetalert2.all.min.js"></script>
 
     <script>
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        // Point worker to local file
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'js/pdf.worker.min.js';
     </script>
 
     <style>
@@ -50,16 +51,21 @@
             border-radius: 8px;
             text-align: center;
             margin-bottom: 20px;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, background-color 0.3s;
+            background-color: #ffffff;
+            background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px);
+            background-size: 20px 20px;
         }
 
         .input-group.drag-active {
             border-color: #3182ce;
             background-color: #ebf8ff;
+            background-image: radial-gradient(#3182ce 1.5px, transparent 1.5px);
         }
 
         .input-group:hover {
             border-color: #3182ce;
+            background-image: radial-gradient(#cbd5e0 1.5px, transparent 1.5px);
         }
 
         #fileList {
@@ -76,6 +82,16 @@
             border-radius: 6px;
             cursor: grab;
             user-select: none;
+        }
+
+        .file-item.selected {
+            background-color: #ebf8ff;
+            border-color: #3182ce;
+        }
+
+        .file-checkbox {
+            margin-right: 12px;
+            cursor: pointer;
         }
 
         .file-item.dragging {
@@ -344,7 +360,7 @@
 
         .page-thumbnail {
             width: 100%;
-            height: 120px;
+            height: var(--thumb-height, 120px);
             object-fit: contain;
             background: #eee;
             border-radius: 4px;
@@ -463,6 +479,57 @@
             border-bottom: 2px solid #3182ce;
         }
 
+        /* Floating Selection Toolbar */
+        .selection-toolbar {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2d3748;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 50px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            transition: all 0.3s ease;
+        }
+
+        .count-badge {
+            background: #3182ce;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .toolbar-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .toolbar-btn.btn-danger {
+            color: #feb2b2;
+            border-color: #c53030;
+        }
+
+        .toolbar-btn.btn-danger:hover {
+            background: #c53030;
+            color: white;
+        }
+
         .history-item {
             background: #fff;
             border: 1px solid #e2e8f0;
@@ -526,6 +593,10 @@
                 <p style="font-size: 12px; color: #718096; margin-top: 5px;">or drag and drop them here</p>
                 <input type="file" id="pdfFiles" multiple accept="application/pdf" style="display: none;">
             </div>
+            <div id="mergeSelectionControls" style="display: none; margin-bottom: 15px; display: flex; gap: 8px;">
+                <button class="btn-preview" onclick="selectAllMerge(true)">Select All</button>
+                <button class="btn-preview" onclick="selectAllMerge(false)">Deselect All</button>
+            </div>
             <div id="fileList"></div>
             <button id="clearAllBtn" class="btn-remove" style="width: 100%; margin-bottom: 20px; display: none; padding: 10px;" onclick="clearAllFiles()">Clear All Files</button>
         </div>
@@ -538,8 +609,8 @@
                     <input type="file" id="mainPdf" accept="application/pdf" onchange="loadOrganizer()">
                 </div>
                 <div id="undoRedoGroup" style="display: none;">
-                    <button class="btn-preview" onclick="undo()" title="Undo (Ctrl+Z)">⟲</button>
-                    <button class="btn-preview" onclick="redo()" title="Redo (Ctrl+Y)">⟳</button>
+                    <button class="btn-preview" onclick="undo()" title="Undo (Ctrl+Z)">Undo</button>
+                    <button class="btn-preview" onclick="redo()" title="Redo (Ctrl+Y)">Redo</button>
                 </div>
             </div>
 
@@ -547,9 +618,6 @@
                 <button class="btn-preview" onclick="addBlankPage()">+ Insert Blank Page</button>
                 <button class="btn-preview" onclick="triggerAddFile()">+ Add from File</button>
                 <button id="selectAllBtn" class="btn-preview" onclick="toggleSelectAll()">Select All</button>
-                <button id="duplicateSelectedBtn" class="btn-preview" onclick="duplicateSelectedPages()">Duplicate</button>
-                <button id="rotateAllBtn" class="btn-preview" onclick="rotateAllPages()">Rotate All</button>
-                <button id="deleteSelectedBtn" class="btn-remove" onclick="deleteSelectedPages()">Delete Selected</button>
                 <button id="splitBtn" class="btn-secondary" onclick="splitToMultiple()" title="Export every page as a separate PDF">Split into Multiple PDFs</button>
                 <button id="previewOrganizedBtn" class="btn-preview" onclick="previewFullOrganizedPdf()" title="Preview organized PDF">Preview Final</button>
                 <input type="file" id="addFileHidden" accept="application/pdf" style="display: none;" onchange="handleAddFileChange()">
@@ -625,6 +693,16 @@
         </div>
     </div>
 
+    <!-- Floating Selection Toolbar -->
+    <div id="selectionToolbar" class="selection-toolbar">
+        <span id="selectionCount" class="count-badge">0 selected</span>
+        <button class="toolbar-btn" onclick="rotateSelectedPages()" title="Rotate 90° clockwise">↻ Rotate</button>
+        <button class="toolbar-btn" onclick="flipSelectedPages('H')" title="Flip horizontally">↔ Flip H</button>
+        <button class="toolbar-btn" onclick="flipSelectedPages('V')" title="Flip vertically">↕ Flip V</button>
+        <button class="toolbar-btn" onclick="duplicateSelectedPages()" title="Duplicate pages">⧉ Duplicate</button>
+        <button class="toolbar-btn btn-danger" onclick="deleteSelectedPages()" title="Remove pages">✕ Delete</button>
+    </div>
+
     <div id="previewModal" class="modal">
         <div class="modal-content">
             <span class="close-modal" onclick="closePreview()">&times;</span>
@@ -634,11 +712,34 @@
 
     <div id="contextMenu" class="context-menu">
         <div class="context-menu-item" onclick="rotateFromMenu()">↻ Rotate Selection</div>
+        <div class="context-menu-item" onclick="flipFromMenu('H')">↔ Flip Horizontal</div>
+        <div class="context-menu-item" onclick="flipFromMenu('V')">↕ Flip Vertical</div>
         <div class="context-menu-item" onclick="duplicateFromMenu()">⧉ Duplicate Selection</div>
         <div class="context-menu-item" style="color: #c53030;" onclick="deleteFromMenu()">✕ Delete Selection</div>
     </div>
 
     <script>
+        // --- Global UI References (Initialized first to prevent ReferenceErrors) ---
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const fileInput = document.getElementById('pdfFiles');
+        const fileListContainer = document.getElementById('fileList');
+        const mergeBtn = document.getElementById('mergeBtn');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const openFolderBtn = document.getElementById('openFolderBtn');
+        const historySection = document.getElementById('historySection');
+        const historyList = document.getElementById('historyList');
+        const dropZone = document.getElementById('dropZone');
+        const pageGrid = document.getElementById('pageGrid');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const selectionToolbar = document.getElementById('selectionToolbar');
+        const selectionCountLabel = document.getElementById('selectionCount');
+        const previewOrganizedBtn = document.getElementById('previewOrganizedBtn');
+        const downloadIndividualBtn = document.getElementById('downloadIndividualBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const processEditBtn = document.getElementById('processEditBtn');
+
         /**
          * Copies filename to clipboard and automatically fills output name field
          */
@@ -661,26 +762,6 @@
         }
 
         let selectedFiles = [];
-        const progressContainer = document.getElementById('progressContainer');
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
-        const fileInput = document.getElementById('pdfFiles');
-        const fileListContainer = document.getElementById('fileList');
-        const mergeBtn = document.getElementById('mergeBtn');
-        const clearAllBtn = document.getElementById('clearAllBtn');
-        const openFolderBtn = document.getElementById('openFolderBtn');
-        const historySection = document.getElementById('historySection');
-        const historyList = document.getElementById('historyList');
-        const dropZone = document.getElementById('dropZone');
-        const pageGrid = document.getElementById('pageGrid');
-        const selectAllBtn = document.getElementById('selectAllBtn');
-        const rotateAllBtn = document.getElementById('rotateAllBtn');
-        const previewOrganizedBtn = document.getElementById('previewOrganizedBtn');
-        const downloadIndividualBtn = document.getElementById('downloadIndividualBtn');
-        const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-        const duplicateSelectedBtn = document.getElementById('duplicateSelectedBtn');
-        const cancelBtn = document.getElementById('cancelBtn');
-        const processEditBtn = document.getElementById('processEditBtn');
 
         // Multi-select Marquee Logic
         let isSelecting = false;
@@ -802,6 +883,11 @@
             deleteSelectedPages();
         }
 
+        function flipFromMenu(axis) {
+            if (contextMenuPageIndex === null) return;
+            flipSelectedPages(axis);
+        }
+
         function duplicateFromMenu() {
             if (contextMenuPageIndex === null) return;
             applyRangeAction('duplicate', true);
@@ -844,6 +930,7 @@
 
         function adjustZoom(val) {
             document.documentElement.style.setProperty('--thumb-width', val + 'px');
+            document.documentElement.style.setProperty('--thumb-height', Math.floor(val * 0.92) + 'px');
         }
 
         function undo() {
@@ -856,7 +943,17 @@
                 return rest;
             }));
             redoStack.push(currentState);
+            const oldThumbnails = organizerPages.map(p => ({
+                file: p.file,
+                sourceIndex: p.sourceIndex,
+                thumbnail: p.thumbnail
+            }));
             organizerPages = JSON.parse(undoStack.pop());
+            // Restore thumbnails for matching pages
+            organizerPages.forEach(p => {
+                const match = oldThumbnails.find(t => t.file === p.file && t.sourceIndex === p.sourceIndex);
+                if (match) p.thumbnail = match.thumbnail;
+            });
             renderOrganizer();
         }
 
@@ -870,7 +967,17 @@
                 return rest;
             }));
             undoStack.push(currentState);
+            const oldThumbnails = organizerPages.map(p => ({
+                file: p.file,
+                sourceIndex: p.sourceIndex,
+                thumbnail: p.thumbnail
+            }));
             organizerPages = JSON.parse(redoStack.pop());
+            // Restore thumbnails for matching pages to prevent re-rendering
+            organizerPages.forEach(p => {
+                const match = oldThumbnails.find(t => t.file === p.file && t.sourceIndex === p.sourceIndex);
+                if (match) p.thumbnail = match.thumbnail;
+            });
             renderOrganizer();
         }
 
@@ -923,18 +1030,54 @@
             handleFiles(e.target.files);
         });
 
-        function handleFiles(files) {
-            const newFiles = Array.from(files).filter(f => f.type === 'application/pdf');
-            selectedFiles = [...selectedFiles, ...newFiles];
-            renderList();
+        async function handleFiles(files) {
+            const filesArray = Array.from(files).filter(f => f.type === 'application/pdf');
+            for (const file of filesArray) {
+                const entry = {
+                    file: file,
+                    selected: true,
+                    rotation: 0,
+                    thumbnail: null
+                };
+                selectedFiles.push(entry);
+                renderList(); // Render immediately with placeholder
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const cacheKey = file.name + file.size;
+                    let pdfjsDoc = pdfjsCache.get(cacheKey);
+                    if (!pdfjsDoc) {
+                        pdfjsDoc = await pdfjsLib.getDocument({
+                            data: new Uint8Array(arrayBuffer)
+                        }).promise;
+                        pdfjsCache.set(cacheKey, pdfjsDoc);
+                    }
+                    // Generate a small thumbnail of the first page
+                    entry.thumbnail = await generateThumbnail(pdfjsDoc, 1, 0.4);
+                    renderList(); // Re-render once thumbnail is ready
+                } catch (e) {
+                    console.error("Merge list thumbnail generation failed", e);
+                }
+            }
             fileInput.value = '';
+        }
+
+        function selectAllMerge(status) {
+            selectedFiles.forEach(item => item.selected = status);
+            renderList();
+        }
+
+        function toggleMergeSelection(index) {
+            selectedFiles[index].selected = !selectedFiles[index].selected;
+            renderList();
         }
 
         function renderList() {
             fileListContainer.innerHTML = '';
-            selectedFiles.forEach((file, index) => {
+            selectedFiles.forEach((entry, index) => {
+                const file = entry.file;
                 const item = document.createElement('div');
-                item.className = 'file-item';
+                item.className = `file-item ${entry.selected ? 'selected' : ''}`;
                 item.draggable = true;
                 item.dataset.index = index;
                 item.addEventListener('dragstart', handleMergeDragStart);
@@ -943,10 +1086,15 @@
                 item.addEventListener('dragend', handleMergeDragEnd);
                 const fileNameSafe = file.name.replace(/'/g, "\\'");
                 item.innerHTML = `
-                    <div class="file-name">${file.name}</div>
+                    <input type="checkbox" class="file-checkbox" ${entry.selected ? 'checked' : ''} onclick="toggleMergeSelection(${index})">
+                    <div style="width: 32px; height: 42px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; margin-right: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
+                        ${entry.thumbnail ? `<img src="${entry.thumbnail}" style="width: 100%; height: 100%; object-fit: contain; transform: rotate(${entry.rotation}deg); transition: transform 0.2s;">` : '<span style="font-size: 8px; color: #cbd5e0;">PDF</span>'}
+                    </div>
+                    <div class="file-name">${file.name} ${entry.rotation !== 0 ? `<span style="color: #3182ce; font-weight: bold; margin-left: 5px;">(${entry.rotation}°)</span>` : ''}</div>
                     <div class="controls">
                         <button class="btn-preview" onclick="copyToClipboard('${fileNameSafe}')" title="Copy & Use as Output Name">📋</button>
                         <button class="btn-preview" onclick="previewFile(${index})" title="Preview">👁</button>
+                        <button class="btn-preview" onclick="rotateFileMerge(${index})" title="Rotate All Pages">↻</button>
                         <button class="btn-move" onclick="move(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
                         <button class="btn-move" onclick="move(${index}, 1)" ${index === selectedFiles.length - 1 ? 'disabled' : ''}>↓</button>
                         <button class="btn-remove" onclick="removeFile(${index})">✕</button>
@@ -954,8 +1102,15 @@
                 `;
                 fileListContainer.appendChild(item);
             });
-            mergeBtn.disabled = selectedFiles.length < 2;
+            const selectedCount = selectedFiles.filter(f => f.selected).length;
+            mergeBtn.disabled = selectedCount < 2;
             clearAllBtn.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+            document.getElementById('mergeSelectionControls').style.display = selectedFiles.length > 0 ? 'flex' : 'none';
+        }
+
+        function rotateFileMerge(index) {
+            selectedFiles[index].rotation = (selectedFiles[index].rotation + 90) % 360;
+            renderList();
         }
 
         function handleMergeDragStart(e) {
@@ -1019,7 +1174,7 @@
         }
 
         function previewFile(index) {
-            const file = selectedFiles[index];
+            const file = selectedFiles[index].file;
             const url = URL.createObjectURL(file);
             document.getElementById('previewFrame').src = url;
             document.getElementById('previewModal').style.display = 'block';
@@ -1197,11 +1352,25 @@
             applyRangeAction('duplicate', true);
         }
 
-        function rotateAllPages() {
+        function rotateSelectedPages() {
+            const selected = organizerPages.filter(p => p.selected);
+            if (selected.length === 0) return;
+
             saveState();
-            if (organizerPages.length === 0) return;
-            organizerPages.forEach(p => {
+            selected.forEach(p => {
                 p.rotation = (p.rotation + 90) % 360;
+            });
+            renderOrganizer();
+        }
+
+        function flipSelectedPages(axis) {
+            const selected = organizerPages.filter(p => p.selected);
+            if (selected.length === 0) return;
+
+            saveState();
+            selected.forEach(p => {
+                if (axis === 'H') p.flipH = !p.flipH;
+                if (axis === 'V') p.flipV = !p.flipV;
             });
             renderOrganizer();
         }
@@ -1303,12 +1472,40 @@
                             swalBar.style.width = `${progress}%`;
 
                             const blob = await generateSinglePageBlob(pageEntry);
-                            const link = document.createElement("a");
-                            link.href = URL.createObjectURL(blob);
-                            link.download = `page_${i + 1}_split.pdf`;
-                            link.click();
-                            // Brief delay to prevent browser download queue issues
-                            await new Promise(r => setTimeout(r, 100));
+                            const savePath = document.getElementById('savePath').value.trim();
+
+                            let baseName = document.getElementById('outName').value.trim();
+                            // Use source filename if output name is left as default 'merged'
+                            if ((!baseName || baseName === 'merged') && !pageEntry.isBlank && pageEntry.file) {
+                                baseName = pageEntry.file.name.replace(/\.[^/.]+$/, "");
+                            }
+                            const fileName = `${baseName || 'split'}_page_${i + 1}.pdf`;
+
+                            if (savePath) {
+                                const formData = new FormData();
+                                formData.append('action', 'save_to_path');
+                                formData.append('pdf', blob, fileName);
+                                formData.append('targetPath', savePath);
+
+                                const response = await fetch('process.php', {
+                                    method: 'POST',
+                                    body: formData
+                                });
+
+                                if (response.ok) {
+                                    openFolderBtn.style.display = 'block';
+                                } else {
+                                    const errorMsg = await response.text();
+                                    throw new Error(`Failed to save ${fileName}: ${errorMsg}`);
+                                }
+                            } else {
+                                const link = document.createElement("a");
+                                link.href = URL.createObjectURL(blob);
+                                link.download = fileName;
+                                link.click();
+                                // Brief delay to prevent browser download queue issues
+                                await new Promise(r => setTimeout(r, 100));
+                            }
                         }
                         Swal.fire("Success", "Split complete.", "success");
                     } catch (e) {
@@ -1337,16 +1534,51 @@
                 Swal.fire("Selection Required", "Please select pages to download.", "warning");
                 return;
             }
+
+            const savePath = document.getElementById('savePath').value.trim();
             progressContainer.style.display = 'block';
-            progressText.textContent = 'Preparing individual downloads...';
+            progressText.textContent = savePath ? 'Saving pages to local path...' : 'Preparing individual downloads...';
+
             try {
                 for (let i = 0; i < selected.length; i++) {
                     const pageEntry = selected[i];
                     const blob = await generateSinglePageBlob(pageEntry);
-                    const link = document.createElement("a");
-                    link.href = URL.createObjectURL(blob);
-                    link.download = `page_${i + 1}_${pageEntry.label}.pdf`;
-                    link.click();
+
+                    let baseName = document.getElementById('outName').value.trim();
+                    // Apply same smart naming for individual exports
+                    if ((!baseName || baseName === 'merged') && !pageEntry.isBlank && pageEntry.file) {
+                        baseName = pageEntry.file.name.replace(/\.[^/.]+$/, "");
+                    }
+                    const fileName = `${baseName || 'page'}_label_${pageEntry.label}.pdf`;
+
+                    if (savePath) {
+                        const formData = new FormData();
+                        formData.append('action', 'save_to_path');
+                        formData.append('pdf', blob, fileName);
+                        formData.append('targetPath', savePath);
+
+                        const response = await fetch('process.php', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (response.ok) {
+                            openFolderBtn.style.display = 'block';
+                        } else {
+                            const errorMsg = await response.text();
+                            throw new Error(`Failed to save ${fileName}: ${errorMsg}`);
+                        }
+                    } else {
+                        const link = document.createElement("a");
+                        link.href = URL.createObjectURL(blob);
+                        link.download = fileName;
+                        link.click();
+                        // Brief delay to prevent browser download queue issues
+                        await new Promise(r => setTimeout(r, 100));
+                    }
+                }
+                if (savePath) {
+                    Swal.fire("Success", `Saved ${selected.length} pages to: ${savePath}`, "success");
                 }
             } catch (e) {
                 Swal.fire("Error", "Error during individual download: " + e.message, "error");
@@ -1394,7 +1626,9 @@
                 if (pdfjsCache.has(cacheKey)) {
                     pdfjsDoc = pdfjsCache.get(cacheKey);
                 } else {
-                    pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    pdfjsDoc = await pdfjsLib.getDocument({
+                        data: new Uint8Array(arrayBuffer)
+                    }).promise;
                     pdfjsCache.set(cacheKey, pdfjsDoc);
                 }
 
@@ -1408,6 +1642,8 @@
                     file,
                     sourceIndex: i,
                     rotation: 0,
+                    flipH: false,
+                    flipV: false,
                     isBlank: false, // Initial pages are not "new" in this context
                     selected: false,
                     label: i + 1,
@@ -1462,11 +1698,28 @@
             }
         }
 
+        function updateOrganizerControls() {
+            if (!selectionToolbar || !selectionCountLabel) return;
+            if (!selectionToolbar || !selectionCountLabel || !selectAllBtn) return;
+
+            const selectedCount = organizerPages.filter(p => p.selected).length;
+
+            if (selectedCount > 0) {
+                selectionToolbar.style.display = 'flex';
+                selectionCountLabel.textContent = `${selectedCount} Selected`;
+                if (selectionCountLabel) selectionCountLabel.textContent = `${selectedCount} Selected`;
+            } else {
+                selectionToolbar.style.display = 'none';
+            }
+
+            selectAllBtn.textContent = (organizerPages.length > 0 && selectedCount === organizerPages.length) ? 'Deselect All' : 'Select All';
+            if (selectAllBtn) selectAllBtn.textContent = (organizerPages.length > 0 && selectedCount === organizerPages.length) ? 'Deselect All' : 'Select All';
+        }
+
         function renderOrganizer() {
             pageGrid.innerHTML = '';
             organizerPages.forEach((page, index) => {
                 const card = document.createElement('div');
-                card.className = `page-card ${page.selected ? 'selected' : ''}`;
                 card.className = `page-card ${page.selected ? 'selected' : ''} ${page.searchMatch ? 'search-match' : ''}`;
                 card.draggable = true;
                 card.dataset.index = index;
@@ -1478,8 +1731,8 @@
                     ${page.isNew ? '<span class="new-badge">NEW</span>' : ''}
                     ${page.isBlank 
                         ? '<div class="page-thumbnail" style="background:#fff; border:1px dashed #ccc; display:flex; align-items:center; justify-content:center; color:#ccc;">Empty</div>' 
-                        : `<div class="thumb-placeholder" style="height:120px; background:#edf2f7; display:flex; align-items:center; justify-content:center; font-size:10px; color:#a0aec0; border-radius:4px;">Loading...</div>
-                           <img id="thumb-${index}" src="${page.thumbnail || ''}" class="page-thumbnail" style="transform: rotate(${page.rotation}deg); display: ${page.thumbnail ? 'block' : 'none'}">`}
+                        : `<div class="thumb-placeholder" style="height: var(--thumb-height, 120px); background:#edf2f7; display:flex; align-items:center; justify-content:center; font-size:10px; color:#a0aec0; border-radius:4px;">Loading...</div>
+                           <img id="thumb-${index}" src="${page.thumbnail || ''}" class="page-thumbnail" style="transform: rotate(${page.rotation}deg) scale(${page.flipH ? -1 : 1}, ${page.flipV ? -1 : 1}); display: ${page.thumbnail ? 'block' : 'none'}">`}
                     <div class="page-num">${page.isBlank ? 'Blank' : 'Page ' + page.label}</div>
                     <div class="page-actions">
                         <button class="btn-tiny btn-preview" onclick="previewOrganizerPage(${index})" title="Preview Page">👁</button>
@@ -1506,16 +1759,6 @@
 
             updateOrganizerControls();
         }
-
-        function updateOrganizerControls() {
-            const selectedCount = organizerPages.filter(p => p.selected).length;
-            deleteSelectedBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
-            deleteSelectedBtn.textContent = `Delete Selected (${selectedCount})`;
-            duplicateSelectedBtn.style.display = selectedCount > 0 ? 'inline-block' : 'none';
-
-            selectAllBtn.textContent = (organizerPages.length > 0 && selectedCount === organizerPages.length) ? 'Deselect All' : 'Select All';
-        }
-
 
         function handleDragStart(e) {
             this.classList.add('dragging');
@@ -1647,7 +1890,9 @@
                 if (pdfjsCache.has(cacheKey)) {
                     pdfjsDoc = pdfjsCache.get(cacheKey);
                 } else {
-                    pdfjsDoc = await pdfjsLib.getDocument(arrayBuffer).promise;
+                    pdfjsDoc = await pdfjsLib.getDocument({
+                        data: new Uint8Array(arrayBuffer)
+                    }).promise;
                     pdfjsCache.set(cacheKey, pdfjsDoc);
                 }
 
@@ -1657,6 +1902,8 @@
                     file,
                     sourceIndex: i,
                     rotation: 0,
+                    flipH: false,
+                    flipV: false,
                     isBlank: false,
                     label: 'New', // Label for newly added pages
                     selected: false,
@@ -1732,6 +1979,21 @@
                                 const srcDoc = fileCache.get(pageEntry.file);
                                 const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
                                 if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+
+                                // Apply Flipping
+                                const {
+                                    width,
+                                    height
+                                } = copiedPage.getSize();
+                                if (pageEntry.flipH) {
+                                    copiedPage.translate(width, 0);
+                                    copiedPage.scale(-1, 1);
+                                }
+                                if (pageEntry.flipV) {
+                                    copiedPage.translate(0, height);
+                                    copiedPage.scale(1, -1);
+                                }
+
                                 resultPdf.addPage(copiedPage);
                             }
                         }
@@ -1784,6 +2046,21 @@
                 if (pageEntry.rotation !== 0) {
                     copiedPage.setRotation(degrees(pageEntry.rotation));
                 }
+
+                // Apply Flipping
+                const {
+                    width,
+                    height
+                } = copiedPage.getSize();
+                if (pageEntry.flipH) {
+                    copiedPage.translate(width, 0);
+                    copiedPage.scale(-1, 1);
+                }
+                if (pageEntry.flipV) {
+                    copiedPage.translate(0, height);
+                    copiedPage.scale(1, -1);
+                }
+
                 tempPdf.addPage(copiedPage);
             }
             const bytes = await tempPdf.save();
@@ -1844,7 +2121,15 @@
 
                             if (!p.isBlank && p.textContent === undefined) {
                                 const cacheKey = p.file.name + p.file.size;
-                                const pdfjsDoc = pdfjsCache.get(cacheKey);
+                                let pdfjsDoc = pdfjsCache.get(cacheKey);
+                                if (!pdfjsDoc) {
+                                    // Re-load document if not cached
+                                    const arrayBuffer = await p.file.arrayBuffer();
+                                    pdfjsDoc = await pdfjsLib.getDocument({
+                                        data: new Uint8Array(arrayBuffer)
+                                    }).promise;
+                                    pdfjsCache.set(cacheKey, pdfjsDoc);
+                                }
                                 if (pdfjsDoc) {
                                     const page = await pdfjsDoc.getPage(p.sourceIndex + 1);
                                     const content = await page.getTextContent();
@@ -1916,6 +2201,21 @@
                                 const srcDoc = fileCache.get(pageEntry.file);
                                 const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
                                 if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+
+                                // Apply Flipping
+                                const {
+                                    width,
+                                    height
+                                } = copiedPage.getSize();
+                                if (pageEntry.flipH) {
+                                    copiedPage.translate(width, 0);
+                                    copiedPage.scale(-1, 1);
+                                }
+                                if (pageEntry.flipV) {
+                                    copiedPage.translate(0, height);
+                                    copiedPage.scale(1, -1);
+                                }
+
                                 resultPdf.addPage(copiedPage);
                             }
                         }
@@ -1972,7 +2272,8 @@
         }
 
         async function mergePDFs() {
-            if (selectedFiles.length < 2) {
+            const filesToMerge = selectedFiles.filter(f => f.selected);
+            if (filesToMerge.length < 2) {
                 Swal.fire("Selection Required", "Please select at least two PDF files.", "warning");
                 return;
             }
@@ -2005,15 +2306,18 @@
                         }
 
                         const {
-                            PDFDocument
+                            PDFDocument,
+                            degrees
                         } = PDFLib;
                         const mergedPdf = await PDFDocument.create();
 
-                        for (let i = 0; i < selectedFiles.length; i++) {
+                        for (let i = 0; i < filesToMerge.length; i++) {
                             if (cancelRequested) throw new Error('Merge operation cancelled');
 
-                            const file = selectedFiles[i];
-                            const progress = Math.round(((i + 1) / selectedFiles.length) * 100);
+                            const entry = filesToMerge[i];
+                            const file = entry.file;
+                            const rotation = entry.rotation || 0;
+                            const progress = Math.round(((i + 1) / filesToMerge.length) * 100);
 
                             swalText.textContent = `Processing: ${file.name}`;
                             swalBar.style.width = `${progress}%`;
@@ -2023,7 +2327,12 @@
                                 const pdf = await PDFDocument.load(fileBuffer);
                                 const indices = pdf.getPageIndices();
                                 const copiedPages = await mergedPdf.copyPages(pdf, indices);
-                                copiedPages.forEach(page => mergedPdf.addPage(page));
+                                copiedPages.forEach(page => {
+                                    if (rotation !== 0) {
+                                        page.setRotation(degrees((page.getRotation().angle + rotation) % 360));
+                                    }
+                                    mergedPdf.addPage(page);
+                                });
                             } catch (e) {
                                 throw new Error(`Could not load "${file.name}".`);
                             }

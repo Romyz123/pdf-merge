@@ -25,7 +25,7 @@ set_time_limit(300);
  * Allowed root directory for saving files
  * (SECURITY CRITICAL)
  */
-$ALLOWED_ROOT = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers\\MERGE';
+$ALLOWED_ROOT = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers'; 
 
 /* ==========================================================
    HELPER FUNCTIONS
@@ -93,22 +93,27 @@ if ($action === 'browse_folder') {
     }
 
     // Use PowerShell to open a native Windows folder picker
+    // Escape single quotes for PowerShell string literal
+    $escapedPath = str_replace("'", "''", $startPath);
     $psCommand = "Add-Type -AssemblyName System.Windows.Forms; " .
         "\$f = New-Object System.Windows.Forms.FolderBrowserDialog; " .
-        "\$f.SelectedPath = '$startPath'; " .
+        "\$f.SelectedPath = '$escapedPath'; " .
         "\$f.Description = 'Select PDF Output Folder'; " .
         "if(\$f.ShowDialog() -eq 'OK') { Write-Host \$f.SelectedPath }";
 
     $fullCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$psCommand\"";
     $result = shell_exec($fullCmd);
-
     if ($result) {
         $selectedPath = trim($result);
         // Security check: Ensure the user didn't browse outside the allowed root
         if (validatePath($selectedPath, $ALLOWED_ROOT)) {
             echo $selectedPath;
         } else {
-            respond("Security violation: Selected path is outside the allowed directory.", 403);
+            // Improved debugging info
+            $rootReal = realpath($ALLOWED_ROOT) ?: $ALLOWED_ROOT;
+            $pathReal = realpath($selectedPath) ?: $selectedPath;
+            respond("Security violation: Selected path is outside the allowed directory.\n\n" .
+                "Allowed Root: $rootReal\nSelected: $pathReal", 403);
         }
     } else {
         // No output usually means the user cancelled
@@ -184,11 +189,20 @@ if ($action === 'save_to_path') {
     $safeName = basename($file['name']);
     $destination = $targetPath . $safeName;
 
-    if (!move_uploaded_file($file['tmp_name'], $destination)) {
-        respond('Failed to save PDF file. Check permissions.', 500);
+    // Check if the file exists and is locked (common on Windows with network shares or open PDF viewers)
+    if (file_exists($destination) && !is_writable($destination)) {
+        respond("File Lock Error: '{$safeName}' is currently open in another program (Browser, Acrobat, or Preview Pane). Please close it and try again.", 403);
     }
 
-    respond('Success');
+    // Use copy() + unlink() instead of move_uploaded_file() for better compatibility with network drives (U:\)
+    // move_uploaded_file often fails with 'Resource temporarily unavailable' on mapped shares.
+    if (@copy($file['tmp_name'], $destination)) {
+        @unlink($file['tmp_name']);
+        respond('Success');
+    } else {
+        $err = error_get_last();
+        respond('Failed to save PDF: ' . ($err['message'] ?? 'Check permissions.'), 500);
+    }
 }
 
 /* ==========================================================
