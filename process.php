@@ -18,9 +18,10 @@ set_time_limit(300);
 
 /**
  * Allowed root directory for saving files
- * (SECURITY CRITICAL)
+ * (SECURITY NOTE: To allow saving anywhere on your local machine, set this to an empty string ''.
+ * This is recommended for personal use on XAMPP to avoid "Security violation" errors.)
  */
-$ALLOWED_ROOT = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers';
+$ALLOWED_ROOT = '';
 
 /* ==========================================================
    HELPER FUNCTIONS
@@ -28,6 +29,16 @@ $ALLOWED_ROOT = 'U:\\01_TESP\\00_COMMON\\020_ACG\\vouchers';
 
 function validatePath(string $path, string $root): bool
 {
+    // If no root is restricted, allow any path that looks absolute
+    if ($root === '') {
+        return $path !== '';
+    }
+
+    // Ensure root exists so realpath can resolve it
+    if (!file_exists($root)) {
+        @mkdir($root, 0777, true);
+    }
+
     $rootReal = realpath($root);
     if ($rootReal === false) {
         return false;
@@ -70,7 +81,8 @@ $action = $_POST['action'] ?? '';
 if ($action === 'browse_folder') {
     $startPath = trim($_POST['targetPath'] ?? $ALLOWED_ROOT);
 
-    if (!is_dir($startPath) || !validatePath($startPath, $ALLOWED_ROOT)) {
+    // Reset to root only if root is restricted and path is invalid
+    if (($ALLOWED_ROOT !== '' && !validatePath($startPath, $ALLOWED_ROOT)) || ($startPath !== '' && !is_dir($startPath))) {
         $startPath = $ALLOWED_ROOT;
     }
 
@@ -106,12 +118,15 @@ if ($action === 'test_path') {
     if (!validatePath($targetPath, $ALLOWED_ROOT)) respond("Security violation.\nRequested path is outside the allowed directory.", 403);
 
     if (!file_exists($targetPath)) {
-        if (!@mkdir($targetPath, 0777, true)) respond('Failed to create directory.', 500);
+        if (!@mkdir($targetPath, 0777, true)) {
+            $err = error_get_last();
+            respond('Failed to create directory. ' . ($err['message'] ?? 'Check folder permissions or run XAMPP as Administrator.'), 500);
+        }
         respond('Success: Folder created and writable.');
     }
 
     if (!is_dir($targetPath)) respond('Path exists but is not a directory.', 400);
-    if (!is_writable($targetPath)) respond('Folder exists but is NOT writable.', 403);
+    if (!is_writable($targetPath)) respond('Folder exists but is NOT writable. Try choosing a location outside protected System folders or run XAMPP as Administrator.', 403);
 
     respond('Success: Folder exists and is writable.');
 }
@@ -142,7 +157,10 @@ if ($action === 'save_to_path') {
     $targetPath = rtrim($targetPath, '/\\') . DIRECTORY_SEPARATOR;
 
     if (!is_dir($targetPath)) {
-        if (!@mkdir($targetPath, 0777, true)) respond('Failed to create destination folder.', 500);
+        if (!@mkdir($targetPath, 0777, true)) {
+            $err = error_get_last();
+            respond('Failed to create destination folder. ' . ($err['message'] ?? 'Check permissions.'), 500);
+        }
     }
 
     $safeName = basename($file['name']);
@@ -157,7 +175,11 @@ if ($action === 'save_to_path') {
         respond('Success');
     } else {
         $err = error_get_last();
-        respond('Failed to save PDF: ' . ($err['message'] ?? 'Check folder permissions.'), 500);
+        $msg = $err['message'] ?? 'Check folder permissions.';
+        if (stripos($msg, 'permission denied') !== false) {
+            $msg .= " (Suggestion: Run XAMPP/Apache as Administrator to allow writing to the C: drive root).";
+        }
+        respond('Failed to save PDF: ' . $msg, 500);
     }
 }
 
