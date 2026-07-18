@@ -5,19 +5,35 @@
     <meta charset="UTF-8">
     <title>PDF Merge Tool</title>
 
-    <!-- Load from CDN -->
-    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
-
-    <!-- Load PDF.js for visual page thumbnails -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-    <!-- SweetAlert2 for beautiful alerts -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-    <!-- Tesseract.js for OCR -->
-    <script src="https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js"></script>
-
+    <!-- Libraries: try local vendor first, fall back to CDN (works offline OR online) -->
     <script>
+        (function () {
+            var LIBS = [
+                { name: 'pdflib',    local: 'vendor/pdf-lib.min.js',             cdn: 'https://unpkg.com/pdf-lib/dist/pdf-lib.min.js' },
+                { name: 'pdfjs',     local: 'vendor/pdf.min.js',                 cdn: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js' },
+                { name: 'swal',      local: 'vendor/sweetalert2.all.min.js',     cdn: 'https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js' },
+                { name: 'tesseract', local: 'vendor/tesseract/tesseract.min.js', cdn: 'https://unpkg.com/tesseract.js@v5.0.3/dist/tesseract.min.js' }
+            ];
+            window.__libSources = {};
+            function loadOne(lib) {
+                return new Promise(function (resolve) {
+                    var attempt = function (i) {
+                        if (i >= 2) { window.__libSources[lib.name] = 'failed'; resolve(); return; }
+                        var url = (i === 0) ? lib.local : lib.cdn;
+                        var s = document.createElement('script');
+                        s.src = url;
+                        s.onload = function () { window.__libSources[lib.name] = (i === 0 ? 'local' : 'cdn'); resolve(); };
+                        s.onerror = function () { if (s.parentNode) s.parentNode.removeChild(s); attempt(i + 1); };
+                        document.head.appendChild(s);
+                    };
+                    attempt(0);
+                });
+            }
+            Promise.all(LIBS.map(loadOne)).then(function () {
+                window.__libsReady = true;
+                window.dispatchEvent(new Event('libsready'));
+            });
+        })();
         let pdfjsLib = null;
     </script>
 
@@ -601,6 +617,7 @@
             <button class="tab-btn" onclick="switchTab(event, 'edit')">Page Manager</button>
             <button class="tab-btn" onclick="switchTab(event, 'ocr')">OCR</button>
             <button class="tab-btn" onclick="switchTab(event, 'history')">History</button>
+            <button class="tab-btn" onclick="switchTab(event, 'export')">Export &amp; Optimize</button>
         </div>
 
         <!-- Merge Tab -->
@@ -696,6 +713,24 @@
 
             <div id="ocrOptions" style="display: none; margin-bottom: 20px; text-align: center; background: #f7fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <p id="ocrFileName" style="font-weight: bold; margin-bottom: 10px; color: #2d3748;"></p>
+                <div style="margin-top: 10px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #4a5568;">OCR Language</label>
+                    <select id="ocrLang" style="margin-left:8px; padding:5px; font-size:13px;">
+                        <option value="eng" selected>English</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
+                        <option value="ita">Italian</option>
+                        <option value="por">Portuguese</option>
+                        <option value="chi_sim">Chinese (Simplified)</option>
+                        <option value="jpn">Japanese</option>
+                        <option value="kor">Korean</option>
+                        <option value="rus">Russian</option>
+                        <option value="ara">Arabic</option>
+                        <option value="hin">Hindi</option>
+                    </select>
+                    <span style="font-size: 11px; color: #718096; margin-left: 6px;">(Offline: add the matching .traineddata.gz to vendor/tesseract/)</span>
+                </div>
                 <div style="display: flex; gap: 10px; justify-content: center;">
                     <button id="btnNativeText" class="btn-preview" onclick="startPDFExtraction(false)">Fast Text Extraction (Native)</button>
                     <button id="btnFullOCR" class="btn-merge" style="margin-top:0; width: auto;" onclick="startPDFExtraction(true)">Full OCR (For Scans)</button>
@@ -720,6 +755,37 @@
                     <button class="btn-preview" style="flex: 1; padding: 10px;" onclick="downloadOCRText()">Download as .txt</button>
                 </div>
             </div>
+        </div>
+
+        <!-- Export & Optimize Tab -->
+        <div id="exportTab" class="tab-content" style="display: none;">
+            <div class="settings-group" style="margin-bottom: 15px;">
+                <label>Load a PDF to export or optimize</label>
+                <input type="file" id="exportPdfInput" accept="application/pdf" onchange="loadExportPdf(this.files)">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div>
+                    <label style="font-size: 12px;">Output Format</label>
+                    <select id="exportFormat" style="width: 100%; padding: 6px; font-size: 13px;">
+                        <option value="image/jpeg">JPG</option>
+                        <option value="image/png">PNG</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size: 12px;">Quality / DPI (<span id="exportDpiLabel">150</span>)</label>
+                    <input type="range" id="exportDpi" min="72" max="300" value="150" oninput="document.getElementById('exportDpiLabel').textContent=this.value">
+                </div>
+            </div>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <button class="btn-preview" onclick="exportAsImages()">&#8595; Export as Images</button>
+                <button class="btn-preview" onclick="reduceFileSize()">&#128466; Reduce File Size</button>
+                <button class="btn-preview" onclick="sanitizeMetadata()">&#129534; Sanitize Metadata</button>
+            </div>
+            <p style="font-size: 11px; color: #718096; margin-top: 10px;">
+                "Reduce File Size" and permanent Redaction rasterize pages into images (ideal for scanned PDFs, but text becomes non-selectable). "Sanitize" strips author/title/keywords and embedded XMP. In the Page Manager, toggling <strong>Redact</strong> on a page permanently flattens it to an image. <strong>Headers &amp; Footers</strong> (set in Output Settings) also stamp onto Merge, Page Manager, Reduce File Size, and exported images.
+            </p>
         </div>
 
         <!-- Common Settings -->
@@ -763,12 +829,50 @@
                 </div>
             </div>
 
+            <!-- Headers & Footers (Acrobat Pro-style stamping) -->
+            <div style="margin-top: 15px; padding: 12px; background: #f1f5f9; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #2d3748;">Headers &amp; Footers</label>
+                    <span style="font-size: 11px; color: #718096;">Placeholders: {page} {total} {date} {time} {filename}</span>
+                </div>
+                <input type="text" id="headerFooterText" placeholder="Confidential &#8212; Page {page} of {total}" style="width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-size: 13px; margin-bottom: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; align-items: end;">
+                    <div>
+                        <label style="font-size: 11px; display:block;">Location</label>
+                        <select id="headerFooterLocation" style="width:100%; padding:5px; font-size:12px;">
+                            <option value="bottom" selected>Bottom</option>
+                            <option value="top">Top</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Align</label>
+                        <select id="headerFooterAlign" style="width:100%; padding:5px; font-size:12px;">
+                            <option value="center" selected>Center</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Size</label>
+                        <input type="number" id="headerFooterSize" value="10" min="6" max="36" style="width:100%; padding:5px; font-size:12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Color</label>
+                        <input type="color" id="headerFooterColor" value="#333333" style="width:100%; height:30px; padding:0; border:1px solid #cbd5e0; border-radius:4px;">
+                    </div>
+                </div>
+            </div>
             <div style="margin-top: 15px; font-size: 13px; color: #4a5568; display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                 <span><input type="checkbox" id="addPageNumbers"> <label for="addPageNumbers">Page Numbers</label></span>
                 <span><input type="checkbox" id="addBookmarks" checked> <label for="addBookmarks">Auto-Bookmarks</label></span>
                 <span><input type="checkbox" id="compressPdf" checked> <label for="compressPdf">Optimize (Smaller Size)</label></span>
                 <input type="checkbox" id="clearAfter" checked>
                 <label for="clearAfter" style="display: inline; font-weight: normal;">Clear list after success</label>
+            </div>
+
+            <div style="margin-top: 10px; padding: 10px; background: #fffaf0; border: 1px solid #f6e05e; border-radius: 6px; font-size: 12px; color: #744210;">
+                <span><input type="checkbox" id="privateMode"> <label for="privateMode"><strong>Private Mode</strong> — don't store history/filenames</label></span>
+                <div style="margin-top: 4px;">Your files are never uploaded. Private Mode also stops the History tab from saving filenames on this device.</div>
             </div>
         </div>
 
@@ -1044,7 +1148,7 @@
                             pdfjsCache.set(cacheKey, pdfjsDoc);
                         }
                         // Generate a small thumbnail of the first page
-                        entry.thumbnail = await generateThumbnail(pdfjsDoc, 1, 0.4);
+                        entry.thumbnail = await generateThumbnail(pdfjsDoc, 1, 0.4) || '';
                         renderList(); // Re-render once thumbnail is ready
                     } catch (e) {
                         console.warn("Merge list thumbnail generation failed", e);
@@ -1074,12 +1178,13 @@
                     item.dataset.index = index;
                     item.addEventListener('dragstart', handleMergeDragStart);
                     item.addEventListener('dragover', handleMergeDragOver);
+                    item.addEventListener('dragleave', handleMergeDragLeave);
                     item.addEventListener('drop', handleMergeDrop);
                     item.addEventListener('dragend', handleMergeDragEnd);
                     const fileNameSafe = file.name.replace(/'/g, "\\'");
                     item.innerHTML = ` 
                     <input type="checkbox" class="file-checkbox" ${entry.selected ? 'checked' : ''} onclick="toggleMergeSelection(${index})">
-                    <div style="width: 32px; height: 42px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; margin-right: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
+                    <div style="width: ${entry.rotation % 180 !== 0 ? '42px' : '32px'}; height: ${entry.rotation % 180 !== 0 ? '32px' : '42px'}; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; margin-right: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
                         ${entry.thumbnail ? `<img src="${entry.thumbnail}" style="width: 100%; height: 100%; object-fit: contain; transform: rotate(${entry.rotation}deg); transition: transform 0.2s;">` : 
                           `<span style="font-size: 8px; color: #cbd5e0;">${file.type.startsWith('image/') ? 'IMG' : 'PDF'}</span>`}
                     </div>
@@ -1111,27 +1216,38 @@
                 this.classList.add('dragging');
                 dragSrcEl = this;
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', this.dataset.index);
             }
 
             function handleMergeDragOver(e) {
                 e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (this.classList) this.classList.add('drag-over');
                 return false;
+            }
+
+            function handleMergeDragLeave(e) {
+                if (this.classList) this.classList.remove('drag-over');
             }
 
             function handleMergeDrop(e) {
                 e.stopPropagation();
-                if (dragSrcEl !== this && dragSrcEl.classList.contains('file-item')) {
+                if (this.classList) this.classList.remove('drag-over');
+                if (dragSrcEl && dragSrcEl !== this && dragSrcEl.classList.contains('file-item')) {
                     const fromIndex = parseInt(dragSrcEl.dataset.index);
-                    const toIndex = parseInt(this.dataset.index);
-                    const item = selectedFiles.splice(fromIndex, 1)[0];
-                    selectedFiles.splice(toIndex, 0, item);
-                    renderList();
+                    let toIndex = parseInt(this.dataset.index);
+                    if (!isNaN(fromIndex) && !isNaN(toIndex)) {
+                        const item = selectedFiles.splice(fromIndex, 1)[0];
+                        if (fromIndex < toIndex) toIndex--;
+                        selectedFiles.splice(toIndex, 0, item);
+                        renderList();
+                    }
                 }
                 return false;
             }
 
             function handleMergeDragEnd() {
-                this.classList.remove('dragging');
+                this.classList.remove('dragging', 'drag-over');
             }
 
             function move(index, direction) {
@@ -1167,31 +1283,60 @@
                 }
             }
 
+            let currentPreviewUrl = null;
+
             function previewFile(index) {
                 const file = selectedFiles[index]?.file; // Use optional chaining for safety
-                const url = URL.createObjectURL(file);
-                document.getElementById('previewFrame').src = url;
+                if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+                currentPreviewUrl = URL.createObjectURL(file);
+                document.getElementById('previewFrame').src = currentPreviewUrl;
                 document.getElementById('previewModal').style.display = 'block';
             }
 
             function closePreview() {
                 document.getElementById('previewModal').style.display = 'none';
                 document.getElementById('previewFrame').src = '';
+                if (currentPreviewUrl) {
+                    URL.revokeObjectURL(currentPreviewUrl);
+                    currentPreviewUrl = null;
+                }
+            }
+
+            function isPrivateMode() {
+                const el = document.getElementById('privateMode');
+                return !!(el && el.checked);
+            }
+
+            function getHistory() {
+                if (isPrivateMode()) return window.__sessionHistory || (window.__sessionHistory = []);
+                try {
+                    return JSON.parse(localStorage.getItem('pdfMergeHistory') || '[]');
+                } catch (e) {
+                    return [];
+                }
+            }
+
+            function setHistory(arr) {
+                if (isPrivateMode()) {
+                    window.__sessionHistory = arr;
+                    return;
+                }
+                localStorage.setItem('pdfMergeHistory', JSON.stringify(arr));
             }
 
             function addToHistory(filename, path, type = 'Merge', count = 0, sourceFiles = []) {
-                let history = JSON.parse(localStorage.getItem('pdfMergeHistory') || '[]');
-                const newEntry = {
+                const entry = {
                     filename,
                     path,
                     type,
                     count,
-                    sourceFiles,
+                    // In Private Mode we never store source filenames on the device.
+                    sourceFiles: isPrivateMode() ? [] : sourceFiles,
                     timestamp: new Date().toLocaleString()
                 };
-                history.unshift(newEntry);
-                history = history.slice(0, 50); // Keep last 50 entries for thorough history check
-                localStorage.setItem('pdfMergeHistory', JSON.stringify(history));
+                const history = getHistory();
+                history.unshift(entry);
+                setHistory(history.slice(0, 50)); // Keep last 50 entries
                 renderHistory();
             }
 
@@ -1199,7 +1344,7 @@
 
             function renderHistory() {
                 if (!historyList) return;
-                let history = JSON.parse(localStorage.getItem('pdfMergeHistory') || '[]');
+                let history = getHistory();
                 historyList.innerHTML = '';
 
                 const searchTerm = historySearchInput ? historySearchInput.value.toLowerCase() : '';
@@ -1245,17 +1390,22 @@
                     confirmButtonText: 'Yes, clear it'
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        localStorage.removeItem('pdfMergeHistory');
+                        setHistory([]);
+                        if (isPrivateMode()) window.__sessionHistory = [];
+                        else localStorage.removeItem('pdfMergeHistory');
                         renderHistory();
                     }
                 });
             }
 
-            window.addEventListener('DOMContentLoaded', () => {
+            function bootstrapApp() {
                 // Initialize PDF.js
                 pdfjsLib = window['pdfjs-dist/build/pdf'] || window.pdfjsLib;
                 if (pdfjsLib) {
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    var localPdf = (window.__libSources && window.__libSources['pdfjs'] === 'local');
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = localPdf
+                        ? 'vendor/pdf.worker.min.js'
+                        : 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
                 }
 
                 // Initialize all DOM references
@@ -1275,6 +1425,23 @@
                 const savedPathValue = localStorage.getItem('pdfToolSavePath');
                 if (savedPathValue) {
                     document.getElementById('savePath').value = savedPathValue;
+                }
+
+                // --- Private Mode ---
+                if (localStorage.getItem('pdfToolPrivateMode') === '1') {
+                    const pmEl = document.getElementById('privateMode');
+                    if (pmEl) pmEl.checked = true;
+                }
+                const privateToggle = document.getElementById('privateMode');
+                if (privateToggle) {
+                    privateToggle.addEventListener('change', () => {
+                        localStorage.setItem('pdfToolPrivateMode', privateToggle.checked ? '1' : '0');
+                        if (privateToggle.checked) {
+                            // Wipe any previously stored metadata for confidentiality
+                            localStorage.removeItem('pdfMergeHistory');
+                        }
+                        renderHistory();
+                    });
                 }
 
                 selectAllBtn = document.getElementById('selectAllBtn');
@@ -1401,7 +1568,20 @@
                 }
 
                 renderHistory();
-            });
+            }
+
+            function startApp() {
+                if (document.readyState === 'loading') {
+                    window.addEventListener('DOMContentLoaded', bootstrapApp, { once: true });
+                } else {
+                    bootstrapApp();
+                }
+            }
+            if (window.__libsReady) {
+                startApp();
+            } else {
+                window.addEventListener('libsready', startApp, { once: true });
+            }
 
 
             async function openSpecificFolder(path) {
@@ -1946,35 +2126,17 @@
                 }
 
                 // Handle Page Reordering
-                if (dragSrcEl !== this) {
-                    const fromIndex = parseInt(dragSrcEl.dataset.index);
-                    let toIndex = parseInt(this.dataset.index);
+                if (!dragSrcEl || dragSrcEl === this) return false;
+                const fromIndex = parseInt(dragSrcEl.dataset.index);
+                const targetIndex = parseInt(this.dataset.index);
+                if (isNaN(fromIndex) || isNaN(targetIndex) || fromIndex === targetIndex) return false;
 
-                    // Don't do anything if dropping on itself
-                    if (fromIndex === toIndex) return false;
-
-                    saveState();
-
-                    // --- DOM Manipulation for Performance ---
-                    // Move the element in the DOM directly without re-rendering
-                    if (isBefore) {
-                        this.parentNode.insertBefore(dragSrcEl, this);
-                    } else {
-                        this.parentNode.insertBefore(dragSrcEl, this.nextSibling);
-                    }
-
-                    // --- Array Manipulation ---
-                    // Move the item in the underlying data array
-                    const item = organizerPages.splice(fromIndex, 1)[0];
-                    const newToIndex = Array.prototype.indexOf.call(this.parentNode.children, this);
-                    organizerPages.splice(newToIndex, 0, item);
-
-                    // --- Update Indices ---
-                    // Re-sync the data-index attributes on all elements
-                    Array.from(this.parentNode.children).forEach((child, i) => {
-                        child.dataset.index = i;
-                    });
-                }
+                saveState();
+                const [item] = organizerPages.splice(fromIndex, 1);
+                let insertAt = isBefore ? targetIndex : targetIndex + 1;
+                if (fromIndex < insertAt) insertAt--; // account for the removed element
+                organizerPages.splice(insertAt, 0, item);
+                renderOrganizer();
             }
 
             function handleDragEnd() {
@@ -2130,30 +2292,41 @@
                                 } else {
                                     if (!fileCache.has(pageEntry.file)) fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
                                     const srcDoc = fileCache.get(pageEntry.file);
-                                    const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
-                                    if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+                                    if (pageEntry.redacted) {
+                                        let pjs = pdfjsCache.get(pageEntry.file.name + pageEntry.file.size);
+                                        if (!pjs) {
+                                            pjs = await pdfjsLib.getDocument({ data: new Uint8Array(await pageEntry.file.arrayBuffer()) }).promise;
+                                            pdfjsCache.set(pageEntry.file.name + pageEntry.file.size, pjs);
+                                        }
+                                        await rasterizeForRedaction(resultPdf, srcDoc, pjs, pageEntry.sourceIndex, 2);
+                                    } else {
+                                        const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
+                                        applyPageRotation(copiedPage, pageEntry.rotation);
 
-                                    // Apply Flipping
-                                    const {
-                                        width,
-                                        height
-                                    } = copiedPage.getSize();
-                                    if (pageEntry.flipH) {
-                                        copiedPage.translate(width, 0);
-                                        copiedPage.scale(-1, 1);
-                                    }
-                                    if (pageEntry.flipV) {
-                                        copiedPage.translate(0, height);
-                                        copiedPage.scale(1, -1);
-                                    }
+                                        // Apply Flipping
+                                        const {
+                                            width,
+                                            height
+                                        } = copiedPage.getSize();
+                                        if (pageEntry.flipH) {
+                                            copiedPage.translate(width, 0);
+                                            copiedPage.scale(-1, 1);
+                                        }
+                                        if (pageEntry.flipV) {
+                                            copiedPage.translate(0, height);
+                                            copiedPage.scale(1, -1);
+                                        }
 
-                                    resultPdf.addPage(copiedPage);
+                                        resultPdf.addPage(copiedPage);
+                                    }
                                 }
                             }
                             const blob = new Blob([await resultPdf.save()], {
                                 type: "application/pdf"
                             });
-                            document.getElementById('previewFrame').src = URL.createObjectURL(blob);
+                            if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+                            currentPreviewUrl = URL.createObjectURL(blob);
+                            document.getElementById('previewFrame').src = currentPreviewUrl;
                             document.getElementById('previewModal').style.display = 'block';
                             Swal.close();
                         } catch (e) {
@@ -2175,7 +2348,9 @@
                     if (progressText) progressText.textContent = 'Generating preview...';
                     progressContainer.style.display = 'block';
                     const blob = await generateSinglePageBlob(pageEntry);
-                    document.getElementById('previewFrame').src = URL.createObjectURL(blob);
+                    if (currentPreviewUrl) URL.revokeObjectURL(currentPreviewUrl);
+                    currentPreviewUrl = URL.createObjectURL(blob);
+                    document.getElementById('previewFrame').src = currentPreviewUrl;
                     document.getElementById('previewModal').style.display = 'block';
                 } catch (e) {
                     Swal.fire("Error", "Failed to generate preview: " + e.message, "error");
@@ -2197,7 +2372,7 @@
                     const srcDoc = await PDFDocument.load(await pageEntry.file.arrayBuffer());
                     const [copiedPage] = await tempPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
                     if (pageEntry.rotation !== 0) {
-                        copiedPage.setRotation(degrees(pageEntry.rotation));
+                        applyPageRotation(copiedPage, pageEntry.rotation);
                     }
 
                     // Apply Flipping
@@ -2222,21 +2397,25 @@
                 });
             }
 
-            async function generateThumbnail(pdfjsDoc, pageNum, quality = 0.7) {
-                const page = await pdfjsDoc.getPage(pageNum);
-                const viewport = page.getViewport({
-                    scale: 0.3
-                });
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
-
-                await page.render({
-                    canvasContext: context,
-                    viewport: viewport
-                }).promise;
-                return canvas.toDataURL('image/jpeg', quality);
+            async function generateThumbnail(pdfjsDoc, pageNum, quality = 0.7, extraRotation = 0) {
+                try {
+                    const page = await pdfjsDoc.getPage(pageNum);
+                    const baseRotation = (page.rotate || 0);
+                    const totalRotation = ((((baseRotation + extraRotation) % 360) + 360) % 360);
+                    const TARGET = 200;
+                    const vRef = page.getViewport({ scale: 1, rotation: totalRotation });
+                    const scale = TARGET / Math.max(vRef.width, vRef.height);
+                    const viewport = page.getViewport({ scale: scale, rotation: totalRotation });
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = Math.max(1, Math.round(viewport.width));
+                    canvas.height = Math.max(1, Math.round(viewport.height));
+                    await page.render({ canvasContext: context, viewport }).promise;
+                    return canvas.toDataURL('image/jpeg', quality);
+                } catch (e) {
+                    console.warn('Thumbnail generation failed for page ' + pageNum, e);
+                    return null;
+                }
             }
 
             async function searchPages() {
@@ -2351,48 +2530,59 @@
                                 } else {
                                     if (!fileCache.has(pageEntry.file)) fileCache.set(pageEntry.file, await PDFDocument.load(await pageEntry.file.arrayBuffer()));
                                     const srcDoc = fileCache.get(pageEntry.file);
-                                    const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
-                                    if (pageEntry.rotation !== 0) copiedPage.setRotation(degrees(pageEntry.rotation));
+                                    if (pageEntry.redacted) {
+                                        let pjs = pdfjsCache.get(pageEntry.file.name + pageEntry.file.size);
+                                        if (!pjs) {
+                                            pjs = await pdfjsLib.getDocument({ data: new Uint8Array(await pageEntry.file.arrayBuffer()) }).promise;
+                                            pdfjsCache.set(pageEntry.file.name + pageEntry.file.size, pjs);
+                                        }
+                                        await rasterizeForRedaction(resultPdf, srcDoc, pjs, pageEntry.sourceIndex, 2);
+                                    } else {
+                                        const [copiedPage] = await resultPdf.copyPages(srcDoc, [pageEntry.sourceIndex]);
+                                        applyPageRotation(copiedPage, pageEntry.rotation);
 
-                                    // Apply Flipping
-                                    const {
-                                        width,
-                                        height
-                                    } = copiedPage.getSize();
-                                    if (pageEntry.flipH) {
-                                        copiedPage.translate(width, 0);
-                                        copiedPage.scale(-1, 1);
-                                    }
-                                    if (pageEntry.flipV) {
-                                        copiedPage.translate(0, height);
-                                        copiedPage.scale(1, -1);
-                                    }
+                                        // Apply Flipping
+                                        const {
+                                            width,
+                                            height
+                                        } = copiedPage.getSize();
+                                        if (pageEntry.flipH) {
+                                            copiedPage.translate(width, 0);
+                                            copiedPage.scale(-1, 1);
+                                        }
+                                        if (pageEntry.flipV) {
+                                            copiedPage.translate(0, height);
+                                            copiedPage.scale(1, -1);
+                                        }
 
-                                    resultPdf.addPage(copiedPage);
+                                        resultPdf.addPage(copiedPage);
+                                    }
                                 }
                             }
 
-                            // Apply Metadata & Page Numbers
-                            const title = document.getElementById('docTitle').value.trim();
-                            if (title) resultPdf.setTitle(title);
-
-                            if (document.getElementById('addPageNumbers').checked) {
-                                const helveticaFont = await resultPdf.embedFont(StandardFonts.Helvetica);
-                                const pages = resultPdf.getPages();
-                                const total = pages.length;
-                                pages.forEach((page, idx) => {
-                                    page.drawText(`Page ${idx + 1} of ${total}`, {
-                                        x: page.getWidth() / 2 - 30,
-                                        y: 20,
-                                        size: 10,
-                                        font: helveticaFont,
-                                        color: rgb(0.5, 0.5, 0.5),
-                                    });
-                                });
-                            }
+                            // Apply Metadata & Professional Features (page numbers, watermark, bates)
+                            swalText.textContent = 'Applying finishing touches...';
+                            await applyProfessionalFeatures(resultPdf, {
+                                watermark: document.getElementById('watermarkText').value.trim(),
+                                batesPrefix: document.getElementById('batesPrefix').value.trim(),
+                                batesStart: parseInt(document.getElementById('batesStart').value) || 1,
+                                addPageNumbers: document.getElementById('addPageNumbers').checked,
+                                addBookmarks: false,
+                                bookmarks: [],
+                                title: document.getElementById('docTitle').value.trim(),
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (document.getElementById('outName').value.trim() || 'Document'),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value,
+                                compress: document.getElementById('compressPdf').checked
+                            });
 
                             swalText.textContent = 'Finalizing PDF...';
-                            const pdfBytes = await resultPdf.save();
+                            const pdfBytes = await resultPdf.save({
+                                useObjectStreams: document.getElementById('compressPdf').checked
+                            });
                             const blob = new Blob([pdfBytes], {
                                 type: "application/pdf"
                             });
@@ -2515,6 +2705,9 @@
                             const mergedPdf = await PDFDocument.create();
                             const sourceNames = filesToMerge.map(f => f.file.name);
 
+                            const fileCache = new Map();
+                            const bookmarks = [];
+
                             for (let i = 0; i < filesToMerge.length; i++) {
                                 if (cancelRequested) throw new Error('Merge operation cancelled');
 
@@ -2525,30 +2718,44 @@
                                 swalText.textContent = `Adding: ${file.name}`;
                                 swalBar.style.width = `${Math.round(((i + 1) / filesToMerge.length) * 100)}%`;
 
-                                // Acrobat Feature: Auto-Bookmarks
                                 const pageIndexBefore = mergedPdf.getPageCount();
 
-                                // Using a mock organizer entry for the helper
-                                const dummyEntry = {
-                                    file,
-                                    sourceIndex: 0,
-                                    rotation
-                                };
-                                if (file.type === 'application/pdf') {
-                                    const srcPdf = await PDFDocument.load(await file.arrayBuffer());
+                                if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                                    if (!fileCache.has(file)) {
+                                        fileCache.set(file, await PDFDocument.load(await file.arrayBuffer()));
+                                    }
+                                    const srcPdf = fileCache.get(file);
                                     const pages = await mergedPdf.copyPages(srcPdf, srcPdf.getPageIndices());
-                                    pages.forEach(p => mergedPdf.addPage(p));
-                                } else {
-                                    await copyDecoratedPage(mergedPdf, dummyEntry, new Map());
+                                    pages.forEach(p => {
+                                        if (rotation) applyPageRotation(p, rotation);
+                                        mergedPdf.addPage(p);
+                                    });
+                                } else if (file.type.startsWith('image/')) {
+                                    await copyDecoratedPage(mergedPdf, file, rotation);
                                 }
 
-                                if (document.getElementById('addBookmarks').checked) {
-                                    // Note: Simple title-based outline
-                                    const outline = mergedPdf.context.obj({});
+                                const pageIndexAfter = mergedPdf.getPageCount();
+                                if (document.getElementById('addBookmarks').checked && pageIndexAfter > pageIndexBefore) {
+                                    bookmarks.push({ title: file.name.replace(/\.[^/.]+$/, ''), pageIndex: pageIndexBefore });
                                 }
                             }
 
-                            await applyProfessionalFeatures(mergedPdf);
+                            await applyProfessionalFeatures(mergedPdf, {
+                                watermark: document.getElementById('watermarkText').value.trim(),
+                                batesPrefix: document.getElementById('batesPrefix').value.trim(),
+                                batesStart: parseInt(document.getElementById('batesStart').value) || 1,
+                                addPageNumbers: document.getElementById('addPageNumbers').checked,
+                                addBookmarks: document.getElementById('addBookmarks').checked,
+                                bookmarks,
+                                title: document.getElementById('docTitle').value.trim(),
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (document.getElementById('outName').value.trim() || 'Document'),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value,
+                                compress: document.getElementById('compressPdf').checked
+                            });
 
                             swalText.textContent = 'Finalizing PDF...';
                             const mergedPdfBytes = await mergedPdf.save({
@@ -2767,15 +2974,21 @@
 
                 try {
                     if (updateUI) statusText.textContent = 'Initializing Tesseract...';
-                    const worker = await Tesseract.createWorker('eng', 1, {
-                        logger: m => {
-                            if (updateUI && m.status === 'recognizing text') {
-                                const progress = Math.round(m.progress * 100);
-                                progressBar.style.width = progress + '%';
-                                statusText.textContent = `Extracting text: ${progress}%`;
-                            }
+                    const localTess = (window.__libSources && window.__libSources['tesseract'] === 'local');
+                    const logger = m => {
+                        if (updateUI && m.status === 'recognizing text') {
+                            const progress = Math.round(m.progress * 100);
+                            progressBar.style.width = progress + '%';
+                            statusText.textContent = `Extracting text: ${progress}%`;
                         }
-                    });
+                    };
+                    const ocrLang = (document.getElementById('ocrLang') && document.getElementById('ocrLang').value) || 'eng';
+                    const worker = await Tesseract.createWorker(ocrLang, 1, localTess ? {
+                        workerPath: 'vendor/tesseract/worker.min.js',
+                        corePath: 'vendor/tesseract/tesseract-core.wasm.js',
+                        langPath: 'vendor/tesseract/',
+                        logger
+                    } : { logger });
 
                     const {
                         data: {
@@ -2817,6 +3030,330 @@
                 link.download = (outName.value || 'extracted-text') + '.txt';
                 link.click();
             }
+            function applyPageRotation(page, userRotation) {
+                const intrinsic = page.getRotation ? page.getRotation().angle : 0;
+                const total = ((((intrinsic + (userRotation || 0)) % 360) + 360) % 360);
+                page.setRotation(PDFLib.degrees(total));
+            }
+
+            function hexToRgb(hex) {
+                // Accepts #rgb or #rrggbb, returns a pdf-lib rgb color
+                if (!hex || hex[0] !== '#') return PDFLib.rgb(0.2, 0.2, 0.2);
+                let h = hex.slice(1);
+                if (h.length === 3) h = h.split('').map(c => c + c).join('');
+                const num = parseInt(h, 16);
+                return PDFLib.rgb(((num >> 16) & 255) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255);
+            }
+
+            async function applyHeaderFooter(pdf, opts = {}) {
+                const text = (opts.headerFooterText || '').trim();
+                if (!text) return;
+                try {
+                    const font = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+                    const pages = pdf.getPages();
+                    const total = pages.length;
+                    const now = new Date();
+                    const size = parseInt(opts.headerFooterSize) || 10;
+                    const loc = opts.headerFooterLocation || 'bottom';
+                    const align = opts.headerFooterAlign || 'center';
+                    const color = hexToRgb(opts.headerFooterColor);
+                    pages.forEach((page, idx) => {
+                        const { width, height } = page.getSize();
+                        const line = text
+                            .replace(/\{page\}/gi, String(idx + 1))
+                            .replace(/\{total\}/gi, String(total))
+                            .replace(/\{date\}/gi, now.toLocaleDateString())
+                            .replace(/\{time\}/gi, now.toLocaleTimeString())
+                            .replace(/\{filename\}/gi, opts.headerFooterFilename || '');
+                        const tw = font.widthOfTextAtSize(line, size);
+                        let x;
+                        if (align === 'left') x = 40;
+                        else if (align === 'right') x = width - tw - 40;
+                        else x = (width - tw) / 2;
+                        const y = loc === 'top' ? height - 28 : 22;
+                        page.drawText(line, { x, y, size, font, color });
+                    });
+                } catch (e) {
+                    console.warn('Header/Footer failed', e);
+                }
+            }
+
+            function drawHeaderFooterCanvas(canvas, pageNum, total, opts) {
+                const text = (opts.headerFooterText || '').trim();
+                if (!text) return;
+                const ctx = canvas.getContext('2d');
+                const loc = opts.headerFooterLocation || 'bottom';
+                const align = opts.headerFooterAlign || 'center';
+                const size = parseInt(opts.headerFooterSize) || 10;
+                const color = opts.headerFooterColor || '#333333';
+                const now = new Date();
+                const line = text
+                    .replace(/\{page\}/gi, String(pageNum))
+                    .replace(/\{total\}/gi, String(total))
+                    .replace(/\{date\}/gi, now.toLocaleDateString())
+                    .replace(/\{time\}/gi, now.toLocaleTimeString())
+                    .replace(/\{filename\}/gi, opts.headerFooterFilename || '');
+                ctx.save();
+                ctx.font = size + 'px Helvetica, Arial, sans-serif';
+                ctx.fillStyle = color;
+                const tw = ctx.measureText(line).width;
+                let x;
+                if (align === 'left') x = 40;
+                else if (align === 'right') x = canvas.width - tw - 40;
+                else x = (canvas.width - tw) / 2;
+                const y = loc === 'top' ? size + 10 : canvas.height - 14;
+                ctx.fillText(line, x, y);
+                ctx.restore();
+            }
+
+            async function copyDecoratedPage(targetDoc, file, rotation = 0) {
+                const bytes = await file.arrayBuffer();
+                const lower = file.name.toLowerCase();
+                let image;
+                try {
+                    if (lower.endsWith('.png')) image = await targetDoc.embedPng(bytes);
+                    else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) image = await targetDoc.embedJpg(bytes);
+                    else {
+                        try { image = await targetDoc.embedPng(bytes); }
+                        catch (e) { image = await targetDoc.embedJpg(bytes); }
+                    }
+                } catch (e) {
+                    throw new Error('Unsupported or corrupt image: ' + file.name);
+                }
+                const page = targetDoc.addPage([image.width, image.height]);
+                page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+                if (rotation) applyPageRotation(page, rotation);
+            }
+
+            async function applyProfessionalFeatures(pdf, opts = {}) {
+                try {
+                    if (opts.title) pdf.setTitle(opts.title);
+                    const pages = pdf.getPages();
+                    if (pages.length === 0) return;
+
+                    if (opts.addPageNumbers) {
+                        const font = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+                        pages.forEach((page, idx) => {
+                            const { width, height } = page.getSize();
+                            page.drawText(`Page ${idx + 1} of ${pages.length}`, { x: width / 2 - 30, y: 20, size: 10, font, color: PDFLib.rgb(0.5, 0.5, 0.5) });
+                        });
+                    }
+
+                    if (opts.batesPrefix) {
+                        const font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                        const pad = String(pages.length + (opts.batesStart || 1)).length;
+                        pages.forEach((page, idx) => {
+                            const { width, height } = page.getSize();
+                            const num = String((opts.batesStart || 1) + idx).padStart(pad, '0');
+                            page.drawText(`${opts.batesPrefix}${num}`, { x: width - 90, y: height - 30, size: 9, font, color: PDFLib.rgb(0.2, 0.2, 0.2) });
+                        });
+                    }
+
+                    if (opts.watermark) {
+                        const font = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+                        pages.forEach((page) => {
+                            const { width, height } = page.getSize();
+                            page.drawText(opts.watermark, { x: width / 2 - (opts.watermark.length * 6), y: height / 2, size: 40, font, color: PDFLib.rgb(0.75, 0.75, 0.75), rotate: PDFLib.degrees(45), opacity: 0.25 });
+                        });
+                    }
+
+                    if (opts.addBookmarks && opts.bookmarks && opts.bookmarks.length) {
+                        try { addPdfOutline(pdf, opts.bookmarks); } catch (e) { console.warn('Bookmark creation failed', e); }
+                    }
+
+                    if (opts.headerFooterText) {
+                        try { await applyHeaderFooter(pdf, opts); } catch (e) { console.warn('Header/Footer failed', e); }
+                    }
+                } catch (e) {
+                    console.warn('applyProfessionalFeatures error:', e);
+                }
+            }
+
+            function addPdfOutline(pdf, items) {
+                const context = pdf.context;
+                const pages = pdf.getPages();
+                const dicts = items.map(item => {
+                    const page = pages[item.pageIndex] || pages[0];
+                    const dest = context.obj([page.ref, 'Fit']);
+                    return context.register(context.obj({ Title: PDFLib.PDFString.of(item.title), Dest: dest }));
+                });
+                for (let i = 0; i < dicts.length; i++) {
+                    const dict = context.lookup(dicts[i], PDFLib.PDFDict);
+                    if (i > 0) dict.set(PDFLib.PDFName.of('Prev'), dicts[i - 1]);
+                    if (i < dicts.length - 1) dict.set(PDFLib.PDFName.of('Next'), dicts[i + 1]);
+                }
+                const outline = context.register(context.obj({ Type: PDFLib.PDFName.of('Outlines'), First: dicts[0] || null, Last: dicts[dicts.length - 1] || null, Count: dicts.length }));
+                dicts.forEach(ref => {
+                    const dict = context.lookup(ref, PDFLib.PDFDict);
+                    dict.set(PDFLib.PDFName.of('Parent'), outline);
+                });
+                pdf.catalog.set(PDFLib.PDFName.of('Outlines'), outline);
+            }
+
+            /* ===================== EXPORT & OPTIMIZE ===================== */
+            let exportPdfFile = null;
+            let exportPdfLibDoc = null;
+            let exportPdfjsDoc = null;
+
+            async function loadExportPdf(files) {
+                const file = files && files[0];
+                if (!file) return;
+                if (!pdfjsLib) { Swal.fire("Library Error", "PDF.js not loaded yet.", "error"); return; }
+                exportPdfFile = file;
+                try {
+                    const buf = await file.arrayBuffer();
+                    exportPdfLibDoc = await PDFLib.PDFDocument.load(buf);
+                    exportPdfjsDoc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Loaded ' + exportPdfLibDoc.getPageCount() + ' pages', showConfirmButton: false, timer: 1500 });
+                } catch (e) {
+                    Swal.fire("Error", "Could not load PDF: " + e.message, "error");
+                }
+            }
+
+            function exportScale() {
+                const dpi = parseInt(document.getElementById('exportDpi').value) || 150;
+                return dpi / 72;
+            }
+
+            function progressHtml() {
+                return '<div id="swal-progress-text" style="margin-bottom: 10px; font-size: 14px; color: #4a5568;">Initializing...</div>' +
+                    '<div class="progress-container" style="display: block; width: 100%; border: 1px solid #e2e8f0;">' +
+                    '<div id="swal-progress-bar" class="progress-bar swal-progress-bar" style="width: 0%;"></div></div>';
+            }
+
+            function setSwalProgress(cur, total, text) {
+                const b = document.getElementById('swal-progress-bar');
+                const t = document.getElementById('swal-progress-text');
+                if (b) b.style.width = Math.round((cur / total) * 100) + '%';
+                if (t) t.textContent = text;
+            }
+
+            function downloadBlob(blob, filename) {
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filename;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+            }
+
+            async function rasterizeCanvas(pageIndex, scale) {
+                const page = await exportPdfjsDoc.getPage(pageIndex + 1);
+                const viewport = page.getViewport({ scale });
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                canvas.width = Math.max(1, Math.round(viewport.width));
+                canvas.height = Math.max(1, Math.round(viewport.height));
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                return canvas;
+            }
+
+            async function exportAsImages() {
+                if (!exportPdfjsDoc) { Swal.fire("No PDF", "Load a PDF first.", "warning"); return; }
+                const fmt = document.getElementById('exportFormat').value;
+                const scale = exportScale();
+                const n = exportPdfjsDoc.numPages;
+                const base = (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, '');
+                Swal.fire({
+                    title: 'Exporting Images', html: progressHtml(), showCancelButton: true, cancelButtonText: 'Cancel', showConfirmButton: false, allowOutsideClick: false,
+                    didOpen: async () => {
+                        Swal.showLoading();
+                        try {
+                            for (let i = 0; i < n; i++) {
+                                if (cancelRequested) break;
+                                setSwalProgress(i + 1, n, 'Page ' + (i + 1) + ' of ' + n);
+                                const canvas = await rasterizeCanvas(i, scale);
+                                drawHeaderFooterCanvas(canvas, i + 1, n, {
+                                    headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                    headerFooterFilename: (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, ''),
+                                    headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                    headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                    headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                    headerFooterColor: document.getElementById('headerFooterColor').value
+                                });
+                                const blob = await new Promise(r => canvas.toBlob(r, fmt, 0.92));
+                                const a = document.createElement('a');
+                                a.href = URL.createObjectURL(blob);
+                                a.download = base + '_page_' + (i + 1) + (fmt === 'image/png' ? '.png' : '.jpg');
+                                a.click();
+                                await new Promise(r => setTimeout(r, 120));
+                            }
+                            Swal.fire("Done", "Exported " + n + " image(s).", "success");
+                        } catch (e) { Swal.fire("Error", e.message, "error"); }
+                    }
+                });
+            }
+
+            async function reduceFileSize() {
+                if (!exportPdfjsDoc) { Swal.fire("No PDF", "Load a PDF first.", "warning"); return; }
+                const scale = exportScale();
+                const n = exportPdfjsDoc.numPages;
+                const base = (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, '');
+                Swal.fire({
+                    title: 'Reducing File Size', html: progressHtml(), showCancelButton: true, cancelButtonText: 'Cancel', showConfirmButton: false, allowOutsideClick: false,
+                    didOpen: async () => {
+                        Swal.showLoading();
+                        try {
+                            const out = await PDFLib.PDFDocument.create();
+                            for (let i = 0; i < n; i++) {
+                                if (cancelRequested) break;
+                                setSwalProgress(i + 1, n, 'Page ' + (i + 1) + ' of ' + n);
+                                const canvas = await rasterizeCanvas(i, scale);
+                                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
+                                const img = await out.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+                                const { width, height } = canvas;
+                                const page = out.addPage([width, height]);
+                                page.drawImage(img, { x: 0, y: 0, width, height });
+                            }
+                            await applyHeaderFooter(out, {
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, ''),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value
+                            });
+                            const pdfBytes = await out.save({ useObjectStreams: true });
+                            downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), base + '_optimized.pdf');
+                            Swal.fire("Done", "Optimized PDF downloaded.", "success");
+                        } catch (e) { Swal.fire("Error", e.message, "error"); }
+                    }
+                });
+            }
+
+            async function sanitizeMetadata() {
+                if (!exportPdfFile) { Swal.fire("No PDF", "Load a PDF first.", "warning"); return; }
+                try {
+                    const buf = await exportPdfFile.arrayBuffer();
+                    const doc = await PDFLib.PDFDocument.load(buf);
+                    doc.setTitle(''); doc.setAuthor(''); doc.setSubject(''); doc.setKeywords('');
+                    doc.setCreator(''); doc.setProducer('');
+                    try {
+                        const PDFName = PDFLib.PDFName;
+                        if (doc.catalog.get(PDFName.of('Metadata'))) doc.catalog.delete(PDFName.of('Metadata'));
+                    } catch (e) { /* ignore */ }
+                    const bytes = await doc.save({ useObjectStreams: true });
+                    const base = (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, '');
+                    downloadBlob(new Blob([bytes], { type: 'application/pdf' }), base + '_sanitized.pdf');
+                    Swal.fire("Done", "Metadata sanitized (standard fields + XMP cleared).", "success");
+                } catch (e) { Swal.fire("Error", e.message, "error"); }
+            }
+
+            async function rasterizeForRedaction(resultPdf, srcLibDoc, pdfjsDoc, sourceIndex, scale) {
+                const sizePage = srcLibDoc.getPages()[sourceIndex];
+                const { width, height } = sizePage.getSize();
+                const page = await pdfjsDoc.getPage(sourceIndex + 1);
+                const viewport = page.getViewport({ scale });
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(viewport.width));
+                canvas.height = Math.max(1, Math.round(viewport.height));
+                const ctx = canvas.getContext('2d');
+                await page.render({ canvasContext: ctx, viewport }).promise;
+                const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+                const img = await resultPdf.embedJpg(new Uint8Array(await blob.arrayBuffer()));
+                const p = resultPdf.addPage([width, height]);
+                p.drawImage(img, { x: 0, y: 0, width, height });
+            }
+
         </script>
 </body>
 
