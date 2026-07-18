@@ -713,6 +713,24 @@
 
             <div id="ocrOptions" style="display: none; margin-bottom: 20px; text-align: center; background: #f7fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <p id="ocrFileName" style="font-weight: bold; margin-bottom: 10px; color: #2d3748;"></p>
+                <div style="margin-top: 10px;">
+                    <label style="font-size: 12px; font-weight: bold; color: #4a5568;">OCR Language</label>
+                    <select id="ocrLang" style="margin-left:8px; padding:5px; font-size:13px;">
+                        <option value="eng" selected>English</option>
+                        <option value="spa">Spanish</option>
+                        <option value="fra">French</option>
+                        <option value="deu">German</option>
+                        <option value="ita">Italian</option>
+                        <option value="por">Portuguese</option>
+                        <option value="chi_sim">Chinese (Simplified)</option>
+                        <option value="jpn">Japanese</option>
+                        <option value="kor">Korean</option>
+                        <option value="rus">Russian</option>
+                        <option value="ara">Arabic</option>
+                        <option value="hin">Hindi</option>
+                    </select>
+                    <span style="font-size: 11px; color: #718096; margin-left: 6px;">(Offline: add the matching .traineddata.gz to vendor/tesseract/)</span>
+                </div>
                 <div style="display: flex; gap: 10px; justify-content: center;">
                     <button id="btnNativeText" class="btn-preview" onclick="startPDFExtraction(false)">Fast Text Extraction (Native)</button>
                     <button id="btnFullOCR" class="btn-merge" style="margin-top:0; width: auto;" onclick="startPDFExtraction(true)">Full OCR (For Scans)</button>
@@ -766,7 +784,7 @@
                 <button class="btn-preview" onclick="sanitizeMetadata()">&#129534; Sanitize Metadata</button>
             </div>
             <p style="font-size: 11px; color: #718096; margin-top: 10px;">
-                "Reduce File Size" and permanent Redaction rasterize pages into images (ideal for scanned PDFs, but text becomes non-selectable). "Sanitize" strips author/title/keywords and embedded XMP. In the Page Manager, toggling <strong>Redact</strong> on a page permanently flattens it to an image.
+                "Reduce File Size" and permanent Redaction rasterize pages into images (ideal for scanned PDFs, but text becomes non-selectable). "Sanitize" strips author/title/keywords and embedded XMP. In the Page Manager, toggling <strong>Redact</strong> on a page permanently flattens it to an image. <strong>Headers &amp; Footers</strong> (set in Output Settings) also stamp onto Merge, Page Manager, Reduce File Size, and exported images.
             </p>
         </div>
 
@@ -811,6 +829,39 @@
                 </div>
             </div>
 
+            <!-- Headers & Footers (Acrobat Pro-style stamping) -->
+            <div style="margin-top: 15px; padding: 12px; background: #f1f5f9; border-radius: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label style="font-size: 13px; font-weight: 600; color: #2d3748;">Headers &amp; Footers</label>
+                    <span style="font-size: 11px; color: #718096;">Placeholders: {page} {total} {date} {time} {filename}</span>
+                </div>
+                <input type="text" id="headerFooterText" placeholder="Confidential &#8212; Page {page} of {total}" style="width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 6px; box-sizing: border-box; font-size: 13px; margin-bottom: 8px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; align-items: end;">
+                    <div>
+                        <label style="font-size: 11px; display:block;">Location</label>
+                        <select id="headerFooterLocation" style="width:100%; padding:5px; font-size:12px;">
+                            <option value="bottom" selected>Bottom</option>
+                            <option value="top">Top</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Align</label>
+                        <select id="headerFooterAlign" style="width:100%; padding:5px; font-size:12px;">
+                            <option value="center" selected>Center</option>
+                            <option value="left">Left</option>
+                            <option value="right">Right</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Size</label>
+                        <input type="number" id="headerFooterSize" value="10" min="6" max="36" style="width:100%; padding:5px; font-size:12px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; display:block;">Color</label>
+                        <input type="color" id="headerFooterColor" value="#333333" style="width:100%; height:30px; padding:0; border:1px solid #cbd5e0; border-radius:4px;">
+                    </div>
+                </div>
+            </div>
             <div style="margin-top: 15px; font-size: 13px; color: #4a5568; display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                 <span><input type="checkbox" id="addPageNumbers"> <label for="addPageNumbers">Page Numbers</label></span>
                 <span><input type="checkbox" id="addBookmarks" checked> <label for="addBookmarks">Auto-Bookmarks</label></span>
@@ -2519,6 +2570,12 @@
                                 addBookmarks: false,
                                 bookmarks: [],
                                 title: document.getElementById('docTitle').value.trim(),
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (document.getElementById('outName').value.trim() || 'Document'),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value,
                                 compress: document.getElementById('compressPdf').checked
                             });
 
@@ -2691,6 +2748,12 @@
                                 addBookmarks: document.getElementById('addBookmarks').checked,
                                 bookmarks,
                                 title: document.getElementById('docTitle').value.trim(),
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (document.getElementById('outName').value.trim() || 'Document'),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value,
                                 compress: document.getElementById('compressPdf').checked
                             });
 
@@ -2919,7 +2982,8 @@
                             statusText.textContent = `Extracting text: ${progress}%`;
                         }
                     };
-                    const worker = await Tesseract.createWorker('eng', 1, localTess ? {
+                    const ocrLang = (document.getElementById('ocrLang') && document.getElementById('ocrLang').value) || 'eng';
+                    const worker = await Tesseract.createWorker(ocrLang, 1, localTess ? {
                         workerPath: 'vendor/tesseract/worker.min.js',
                         corePath: 'vendor/tesseract/tesseract-core.wasm.js',
                         langPath: 'vendor/tesseract/',
@@ -2970,6 +3034,76 @@
                 const intrinsic = page.getRotation ? page.getRotation().angle : 0;
                 const total = ((((intrinsic + (userRotation || 0)) % 360) + 360) % 360);
                 page.setRotation(PDFLib.degrees(total));
+            }
+
+            function hexToRgb(hex) {
+                // Accepts #rgb or #rrggbb, returns a pdf-lib rgb color
+                if (!hex || hex[0] !== '#') return PDFLib.rgb(0.2, 0.2, 0.2);
+                let h = hex.slice(1);
+                if (h.length === 3) h = h.split('').map(c => c + c).join('');
+                const num = parseInt(h, 16);
+                return PDFLib.rgb(((num >> 16) & 255) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255);
+            }
+
+            async function applyHeaderFooter(pdf, opts = {}) {
+                const text = (opts.headerFooterText || '').trim();
+                if (!text) return;
+                try {
+                    const font = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+                    const pages = pdf.getPages();
+                    const total = pages.length;
+                    const now = new Date();
+                    const size = parseInt(opts.headerFooterSize) || 10;
+                    const loc = opts.headerFooterLocation || 'bottom';
+                    const align = opts.headerFooterAlign || 'center';
+                    const color = hexToRgb(opts.headerFooterColor);
+                    pages.forEach((page, idx) => {
+                        const { width, height } = page.getSize();
+                        const line = text
+                            .replace(/\{page\}/gi, String(idx + 1))
+                            .replace(/\{total\}/gi, String(total))
+                            .replace(/\{date\}/gi, now.toLocaleDateString())
+                            .replace(/\{time\}/gi, now.toLocaleTimeString())
+                            .replace(/\{filename\}/gi, opts.headerFooterFilename || '');
+                        const tw = font.widthOfTextAtSize(line, size);
+                        let x;
+                        if (align === 'left') x = 40;
+                        else if (align === 'right') x = width - tw - 40;
+                        else x = (width - tw) / 2;
+                        const y = loc === 'top' ? height - 28 : 22;
+                        page.drawText(line, { x, y, size, font, color });
+                    });
+                } catch (e) {
+                    console.warn('Header/Footer failed', e);
+                }
+            }
+
+            function drawHeaderFooterCanvas(canvas, pageNum, total, opts) {
+                const text = (opts.headerFooterText || '').trim();
+                if (!text) return;
+                const ctx = canvas.getContext('2d');
+                const loc = opts.headerFooterLocation || 'bottom';
+                const align = opts.headerFooterAlign || 'center';
+                const size = parseInt(opts.headerFooterSize) || 10;
+                const color = opts.headerFooterColor || '#333333';
+                const now = new Date();
+                const line = text
+                    .replace(/\{page\}/gi, String(pageNum))
+                    .replace(/\{total\}/gi, String(total))
+                    .replace(/\{date\}/gi, now.toLocaleDateString())
+                    .replace(/\{time\}/gi, now.toLocaleTimeString())
+                    .replace(/\{filename\}/gi, opts.headerFooterFilename || '');
+                ctx.save();
+                ctx.font = size + 'px Helvetica, Arial, sans-serif';
+                ctx.fillStyle = color;
+                const tw = ctx.measureText(line).width;
+                let x;
+                if (align === 'left') x = 40;
+                else if (align === 'right') x = canvas.width - tw - 40;
+                else x = (canvas.width - tw) / 2;
+                const y = loc === 'top' ? size + 10 : canvas.height - 14;
+                ctx.fillText(line, x, y);
+                ctx.restore();
             }
 
             async function copyDecoratedPage(targetDoc, file, rotation = 0) {
@@ -3025,6 +3159,10 @@
 
                     if (opts.addBookmarks && opts.bookmarks && opts.bookmarks.length) {
                         try { addPdfOutline(pdf, opts.bookmarks); } catch (e) { console.warn('Bookmark creation failed', e); }
+                    }
+
+                    if (opts.headerFooterText) {
+                        try { await applyHeaderFooter(pdf, opts); } catch (e) { console.warn('Header/Footer failed', e); }
                     }
                 } catch (e) {
                     console.warn('applyProfessionalFeatures error:', e);
@@ -3124,6 +3262,14 @@
                                 if (cancelRequested) break;
                                 setSwalProgress(i + 1, n, 'Page ' + (i + 1) + ' of ' + n);
                                 const canvas = await rasterizeCanvas(i, scale);
+                                drawHeaderFooterCanvas(canvas, i + 1, n, {
+                                    headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                    headerFooterFilename: (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, ''),
+                                    headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                    headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                    headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                    headerFooterColor: document.getElementById('headerFooterColor').value
+                                });
                                 const blob = await new Promise(r => canvas.toBlob(r, fmt, 0.92));
                                 const a = document.createElement('a');
                                 a.href = URL.createObjectURL(blob);
@@ -3158,6 +3304,14 @@
                                 const page = out.addPage([width, height]);
                                 page.drawImage(img, { x: 0, y: 0, width, height });
                             }
+                            await applyHeaderFooter(out, {
+                                headerFooterText: document.getElementById('headerFooterText').value.trim(),
+                                headerFooterFilename: (exportPdfFile.name || 'document').replace(/\.[^/.]+$/, ''),
+                                headerFooterLocation: document.getElementById('headerFooterLocation').value,
+                                headerFooterAlign: document.getElementById('headerFooterAlign').value,
+                                headerFooterSize: parseInt(document.getElementById('headerFooterSize').value) || 10,
+                                headerFooterColor: document.getElementById('headerFooterColor').value
+                            });
                             const pdfBytes = await out.save({ useObjectStreams: true });
                             downloadBlob(new Blob([pdfBytes], { type: 'application/pdf' }), base + '_optimized.pdf');
                             Swal.fire("Done", "Optimized PDF downloaded.", "success");
